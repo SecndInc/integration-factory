@@ -15,6 +15,7 @@
 
 import type { Page } from 'playwright';
 import type { BrowserHandle, BrowserProvider } from './browser-provider.js';
+import { isIdSegment } from './path-template.js';
 
 export type JsonShape = string | { [key: string]: JsonShape };
 
@@ -155,7 +156,7 @@ export function distinctEndpoints(routes: CapturedRoute[]): CapturedRoute[] {
       // Templatize numeric / long-id path segments so repeats collapse.
       const path = u.pathname
         .split('/')
-        .map((s) => (/^\d+$/.test(s) || /^[0-9a-f]{12,}$/i.test(s) ? '{id}' : s))
+        .map((s) => (isIdSegment(s) ? '{id}' : s))
         .join('/');
       pathKey = `${u.host}${path}${sanitizedQuery(u.searchParams)}`;
     } catch {
