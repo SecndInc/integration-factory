@@ -6,6 +6,7 @@ import type { ApiDoc } from '../types.js';
 import { toHtml } from './html.js';
 import { toMarkdown } from './markdown.js';
 import { toOpenApi } from './openapi.js';
+import { stableJson } from './shared.js';
 
 export interface RenderedDocs {
   'api.json': string;
@@ -23,8 +24,5 @@ export function renderApiDoc(doc: Redacted<ApiDoc>): RenderedDocs {
   };
 }
 
-/** JSON.stringify with keys sorted at every level and a trailing newline. */
-export function stableJson(value: unknown): string {
-  void value;
-  throw new Error('not implemented');
-}
+/** JSON.stringify with keys sorted at every level and a trailing newline. Implemented in shared.ts. */
+export { stableJson };
