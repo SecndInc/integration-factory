@@ -1,7 +1,7 @@
 // OpenAPI 3.1 from a Redacted<ApiDoc>. One operation per `api` endpoint. Every local $ref is
 // inlined so the file loads in Redocly or Swagger UI unchanged and maps to MCP tool definitions
-// mechanically. Extensions: x-integration-factory (bindings, ambient, evidence, coverage,
-// workflows with inputs + sequence), components.securitySchemes from auth. Pure.
+// mechanically. Extensions: x-observed-in, x-bindings (per operation), x-workflows, x-coverage (root),
+// components.securitySchemes from auth. Pure.
 // Design: docs/design/api-docs.md §6, §13 item 6.
 
 import type { Redacted } from '../redact.js';
@@ -42,20 +42,8 @@ export function toOpenApi(doc: Redacted<ApiDoc>): OpenApiDocument {
     servers: serverUrls.map((url) => ({ url: serverUrl(url) })),
     tags: doc.workflows.map((wf) => ({ name: wf.name, description: wf.goal })),
     paths,
-    'x-integration-factory': {
-      redacted: true,
-      generatedAt: doc.generatedAt,
-      site: { id: doc.site.id, startUrl: doc.site.startUrl },
-      auth: {
-        cookies: doc.auth.cookies,
-        headers: doc.auth.headers,
-        loginWorkflowId: doc.auth.loginWorkflowId,
-        verification: doc.auth.verification,
-      },
-      coverage: doc.coverage,
-      workflows: doc.workflows.map(workflowExtension),
-      outside: doc.outside,
-    },
+    'x-workflows': doc.workflows.map(workflowExtension),
+    'x-coverage': doc.coverage,
   };
   if (Object.keys(schemes).length > 0) out['components'] = { securitySchemes: schemes };
   return out;
@@ -67,17 +55,10 @@ function operation(doc: ApiDoc, ep: Endpoint, usedIds: Set<string>, serverUrls: 
     summary: ep.operation === null ? `${ep.method.toUpperCase()} ${ep.pathTemplate}` : `${ep.operation} (GraphQL)`,
     parameters: parameters(ep),
     responses: responses(ep),
-    'x-integration-factory': {
-      endpointId: ep.id,
-      host: ep.host,
-      graphqlOperation: ep.operation,
-      ambient: ep.ambient,
-      cors: ep.cors,
-      headers: ep.headers,
-      bindings: ep.bindings,
-      observedIn: ep.observedIn,
-    },
+    'x-observed-in': ep.observedIn,
+    'x-bindings': ep.bindings,
   };
+  if (ep.ambient) op['x-ambient'] = true;
   const tags = tagsOf(doc, ep);
   if (tags.length > 0) op['tags'] = tags;
   if (ep.request !== null) op['requestBody'] = requestBody(ep.request);

@@ -12,7 +12,8 @@ const API = 'api.shop.example.com';
 export const ITEM_ID = `GET ${API}/v1/items/{itemId}`;
 export const CART_ID = `POST ${API}/v1/cart`;
 export const SEARCH_ID = `POST ${API}/graphql#SearchItems`;
-export const PAGE_ID = 'GET shop.example.com/cart';
+export const POLL_ID = `GET ${API}/v1/poll`;
+export const PAGE_ID ='GET shop.example.com/cart';
 
 const evidence = (workflowId: string, stepId: string, exchangeId: string, at: string) => ({
   runId: '20261103T101500Z-ab12',
@@ -155,7 +156,12 @@ const raw = {
       auth: { cookies: ['session_id'], headers: [] },
       request: {
         mediaType: 'application/json',
-        schema: { type: 'object', properties: { itemId: { type: 'string' }, quantity: { type: 'integer' } }, required: ['itemId'] },
+        schema: {
+          $defs: { qty: { type: 'integer', minimum: 1 } },
+          type: 'object',
+          properties: { itemId: { type: 'string' }, quantity: { $ref: '#/$defs/qty' } },
+          required: ['itemId'],
+        },
         example: { itemId: 'it_42', quantity: 2 },
         undecoded: null,
       },
@@ -201,6 +207,24 @@ const raw = {
       observedIn: [evidence('find-item', 'search', 's1:r1:0', '2026-11-03T10:17:00.000Z')],
     },
     {
+      id: POLL_ID,
+      kind: 'api',
+      method: 'GET',
+      host: API,
+      pathTemplate: '/v1/poll',
+      operation: null,
+      pathParams: [],
+      queryParams: [],
+      headers: [],
+      auth: { cookies: ['session_id'], headers: [] },
+      request: null,
+      responses: { '200': { mediaType: 'application/json', schema: { type: 'object', properties: { unread: { type: 'integer' } } }, example: { unread: 0 }, undecoded: null } },
+      bindings: [],
+      ambient: true,
+      cors: false,
+      observedIn: [evidence('find-item', 'search', 's1:r7:0', '2026-11-03T10:17:30.000Z')],
+    },
+    {
       id: PAGE_ID,
       kind: 'page',
       method: 'GET',
@@ -223,8 +247,8 @@ const raw = {
   coverage: {
     steps: 5,
     stepsWithExchanges: 4,
-    endpoints: 4,
-    endpointsWithExample: 3,
+    endpoints: 5,
+    endpointsWithExample: 4,
     bindings: 1,
     inputsBound: 2,
     computedValues: 0,

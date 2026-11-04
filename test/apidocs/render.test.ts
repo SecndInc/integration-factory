@@ -30,8 +30,8 @@ test('toOpenApi: one operation per api endpoint, inlined schemas, no $ref anywhe
   );
 
   const ops: Json[] = Object.values(api.paths as Json).flatMap((item: any) => Object.values(item) as Json[]);
-  assert.equal(ops.length, 3, 'the page endpoint is not an operation');
-  assert.equal(new Set(ops.map((o) => o.operationId)).size, 3);
+  assert.equal(ops.length, 4, 'the page endpoint is not an operation');
+  assert.equal(new Set(ops.map((o) => o.operationId)).size, 4);
   assert.ok(!('/cart' in api.paths));
 
   const get = api.paths['/v1/items/{itemId}'].get;
@@ -52,18 +52,29 @@ test('toOpenApi: one operation per api endpoint, inlined schemas, no $ref anywhe
 
   const post = api.paths['/v1/cart'].post;
   assert.deepEqual(post.requestBody.content['application/json'].example, { itemId: 'it_42', quantity: 2 });
-  assert.equal(post['x-integration-factory'].bindings[0].from.endpointId, ITEM_ID);
-  assert.equal(post['x-integration-factory'].endpointId, CART_ID);
+  assert.equal(post['x-bindings'][0].from.endpointId, ITEM_ID);
+  assert.equal(post['x-observed-in'][0].stepId, 'add');
+  assert.equal(post.operationId, 'post_api_shop_example_com_v1_cart');
+  assert.equal(post.requestBody.content['application/json'].schema.properties.quantity.minimum, 1);
+  assert.equal(api.paths['/v1/poll'].get['x-ambient'], true);
+  assert.deepEqual(
+    Object.keys(api).filter((k) => k.startsWith('x-')).sort(),
+    ['x-coverage', 'x-workflows'],
+  );
+  assert.deepEqual(
+    Object.keys(post).filter((k) => k.startsWith('x-')).sort(),
+    ['x-bindings', 'x-observed-in'],
+  );
   assert.ok(api.paths['/graphql#SearchItems'].post);
-  assert.equal(api.paths['/graphql#SearchItems'].post['x-integration-factory'].endpointId, SEARCH_ID);
+  assert.equal(api.paths['/graphql#SearchItems'].post['x-observed-in'][0].stepId, 'search');
 
   assert.ok(!JSON.stringify(api).includes('$ref'));
   assert.ok(!JSON.stringify(api).includes('$defs'));
   assert.deepEqual(api.components.securitySchemes.cookie_session_id, { type: 'apiKey', in: 'cookie', name: 'session_id' });
   assert.deepEqual(api.components.securitySchemes['header_x-csrf-token'], { type: 'apiKey', in: 'header', name: 'x-csrf-token' });
   assert.deepEqual(get.security, [{ cookie_session_id: [], 'header_x-csrf-token': [] }]);
-  assert.equal(api['x-integration-factory'].coverage.bindings, 1);
-  assert.equal(api['x-integration-factory'].workflows[0].sequence.length, 2);
+  assert.equal(api['x-coverage'].bindings, 1);
+  assert.equal(api['x-workflows'][0].sequence.length, 2);
 });
 
 test('inlineRefs resolves local refs, breaks cycles and drops external refs', () => {
@@ -99,6 +110,10 @@ test('toHtml: self-contained page with every endpoint path, workflow name, svg p
   assert.ok(html.includes('comes from'));
   assert.ok(html.includes('Expected network traffic, none was captured'));
   assert.ok(html.includes('Seen outside any step'));
+  const background = html.slice(html.indexOf('id="background"'), html.indexOf('id="outside"'));
+  assert.ok(html.includes('Background traffic (1)'));
+  assert.ok(background.includes('/v1/poll'));
+  assert.ok(!html.slice(html.indexOf('id="endpoints"'), html.indexOf('id="background"')).includes('/v1/poll'));
   assert.ok(html.includes('add-to-cart') || html.includes('Add to cart'));
 
   // No resource loads: the only absolute links are to the site itself.
@@ -130,7 +145,9 @@ test('toMarkdown: headings, tables and fenced examples', () => {
   for (const heading of ['# Shop Demo', '## Coverage', '## Auth', '## 2 workflows', '## 3 endpoints', '### Find an item', '### Add to cart', '### `GET /v1/items/{itemId}`', '### `POST /v1/cart`', '### `POST /graphql (SearchItems)`']) {
     assert.ok(md.includes(heading), `missing ${heading}`);
   }
-  assert.ok(md.includes('2 workflows, 3 endpoints, 1 binding'));
+  assert.ok(md.includes('2 workflows, 4 endpoints, 1 binding'));
+  assert.ok(md.includes('## Background traffic (1)'));
+  assert.ok(md.includes('### `GET /v1/poll`'));
   assert.ok(md.includes('```json\n{\n  "itemId": "it_42",\n  "quantity": 2\n}\n```'));
   assert.ok(md.includes('```text\noops\n```'));
   assert.ok(md.includes('| Name | In | Source | Example | Required |'));
@@ -139,6 +156,18 @@ test('toMarkdown: headings, tables and fenced examples', () => {
   assert.ok(md.includes('| Steps that triggered requests | 4 of 5 |'), 'coverage table');
   assert.ok(!md.includes('must-not-appear'));
   assert.ok(md.endsWith('\n') && !md.endsWith('\n\n'));
+});
+
+test('output does not depend on the order of doc.endpoints', () => {
+  const original = renderApiDoc(sampleDoc);
+  const reversed = { ...sampleDoc, endpoints: [...sampleDoc.endpoints].reverse() } as typeof sampleDoc;
+  const rotated = { ...sampleDoc, endpoints: [...sampleDoc.endpoints.slice(2), ...sampleDoc.endpoints.slice(0, 2)] } as typeof sampleDoc;
+  for (const variant of [reversed, rotated]) {
+    const out = renderApiDoc(variant);
+    assert.equal(out['openapi.json'], original['openapi.json']);
+    assert.equal(out['index.html'], original['index.html']);
+    assert.equal(out['README.md'], original['README.md']);
+  }
 });
 
 test('renderApiDoc returns the four outputs and is deterministic', () => {
