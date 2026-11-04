@@ -41,11 +41,17 @@ const uuidShape = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}
 const emailShape = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const phoneShapes = [/^\+\d[\d\s().-]{8,}\d$/, /^\(?\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}$/];
 
+/** Names the shared pattern misses: refresh tokens, session ids, credentials, one-time codes. */
+const supplementaryNamePattern = /refresh|credential|jwt|bearer|passcode|otp|(?:^|[^a-z])(?:sid|pin)(?:$|[^a-z])/i;
+const bearerInText = /\b(bearer|basic)(\s+)[A-Za-z0-9._~+/=-]{8,}/gi;
+const jwtInText = /eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*/g;
+const pairInText = /([A-Za-z0-9_.-]+)(["']?\s*[=:]\s*)(["']?)([^\s&;,"'<>#?=]+)/g;
+
 /** True when `name` alone would cause redaction, without looking at the value. */
 export function isSensitiveName(name: string, policy: RedactionPolicy): boolean {
   const lower = name.toLowerCase();
   if ((sensitiveNames as readonly string[]).includes(lower)) return true;
-  if (sensitiveNamePattern.test(lower)) return true;
+  if (sensitiveNamePattern.test(lower) || supplementaryNamePattern.test(lower)) return true;
   return policy.extraKeys.some((k) => k.toLowerCase() === lower);
 }
 
@@ -113,11 +119,24 @@ function redactString(value: string, place: ValuePlace, key: string | undefined,
   if (forced || (key !== undefined && isSensitiveName(key, policy))) return REDACTED;
   if (policy.secretValues.includes(value)) return REDACTED;
   if (looksLikeSecret(value)) return REDACTED;
-  let out = value;
+  return redactText(value, policy);
+}
+
+/**
+ * Scans free text (and strings embedding URLs, query strings or forms) for secrets:
+ * every policy secret value, `Bearer <token>`, JWT shapes, and the value of any
+ * `name=value` / `name: value` pair whose name is sensitive.
+ */
+export function redactText(text: string, policy: RedactionPolicy): string {
+  let out = text;
   for (const secret of policy.secretValues) {
     if (secret && out.includes(secret)) out = out.split(secret).join(REDACTED);
   }
-  return out;
+  out = out.replace(bearerInText, (_m, scheme: string, space: string) => `${scheme}${space}${REDACTED}`);
+  out = out.replace(jwtInText, REDACTED);
+  return out.replace(pairInText, (match, name: string, sep: string, quote: string, val: string) =>
+    val === REDACTED || !isSensitiveName(name, policy) ? match : `${name}${sep}${quote}${REDACTED}`,
+  );
 }
 
 /** `a=1; b=2` or `id=abc; Path=/; HttpOnly` -> names and attribute names kept, values replaced. */

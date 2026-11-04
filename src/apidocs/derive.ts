@@ -67,15 +67,27 @@ export function templatePath(path: string): { template: string; params: readonly
   const used = new Set<string>();
   const params: { name: string; value: string }[] = [];
   const out = segments.map((segment, i) => {
-    if (!isIdSegment(segment)) return segment;
     const prev = segments[i - 1];
-    const base = (prev && !isIdSegment(prev) ? paramBase(prev) : '') || 'id';
+    const secret = !isIdSegment(segment) && isSecretSegment(segment, prev);
+    if (!secret && !isIdSegment(segment)) return segment;
+    const base = secret ? 'token' : (prev && !isIdSegment(prev) ? paramBase(prev) : '') || 'id';
     const name = uniqueName(base, used);
     used.add(name);
     params.push({ name, value: segment });
     return `{${name}}`;
   });
   return { template: out.join('/') || '/', params };
+}
+
+const secretSegmentMinLength = 16;
+const secretRouteWords = /^(?:reset|verify|confirm|invite|unsubscribe|activate|magic|token|redeem)$/i;
+
+/** A non-id segment that still looks like a secret: token-shaped, sensitive-named with a shouting run, or after reset/verify/... */
+function isSecretSegment(segment: string, previous: string | undefined): boolean {
+  if (looksLikeSecret(segment)) return true;
+  const mixed = /\d/.test(segment) || /[A-Z]{3,}/.test(segment);
+  if (segment.length >= secretSegmentMinLength && mixed && isSensitiveName(segment, { extraKeys: [], secretValues: [] })) return true;
+  return Boolean(previous && secretRouteWords.test(previous) && segment.length >= bindingMinStringLength + 2 && mixed && /[A-Za-z]/.test(segment));
 }
 
 function paramBase(previous: string): string {
@@ -100,8 +112,7 @@ export interface GraphqlOperationInfo {
   type: 'query' | 'mutation' | 'subscription';
 }
 
-/** Operation name and type for a JSON POST to a path ending in /graphql. */
-export function graphqlOperationInfo(exchange: Exchange): GraphqlOperationInfo | undefined {
+function parseGraphql(exchange: Exchange): { name?: string; type: GraphqlOperationInfo['type'] } | undefined {
   if (exchange.request.method.toUpperCase() !== 'POST') return undefined;
   if (!/\/graphql\/?$/i.test(exchange.request.path.split('?', 1)[0] ?? '')) return undefined;
   const body = decodeBody(exchange.request.body, headerValue(exchange.request.headers, 'content-type'));
@@ -112,7 +123,19 @@ export function graphqlOperationInfo(exchange: Exchange): GraphqlOperationInfo |
   const declared = /^\s*(query|mutation|subscription)\b\s*([A-Za-z_]\w*)?/.exec(query);
   const type = (declared?.[1] as GraphqlOperationInfo['type'] | undefined) ?? 'query';
   const name = typeof record.operationName === 'string' && record.operationName ? record.operationName : declared?.[2];
-  return name ? { name, type } : undefined;
+  return { ...(name ? { name } : {}), type };
+}
+
+/** Operation name and type for a JSON POST to a path ending in /graphql; undefined when anonymous. */
+export function graphqlOperationInfo(exchange: Exchange): GraphqlOperationInfo | undefined {
+  const parsed = parseGraphql(exchange);
+  return parsed?.name ? { name: parsed.name, type: parsed.type } : undefined;
+}
+
+/** `query:Name`, `mutation:Name` or `query:anonymous`: the endpoint's operation string. */
+function graphqlOperationKey(exchange: Exchange): string | undefined {
+  const parsed = parseGraphql(exchange);
+  return parsed ? `${parsed.type}:${parsed.name ?? 'anonymous'}` : undefined;
 }
 
 /** operationName from a JSON body, or the name in its `query` text, for a POST to a path ending in /graphql. */
@@ -136,7 +159,26 @@ export function shapeToJsonSchema(examples: readonly unknown[]): JsonSchema {
   return schemaOf(examples.filter((e) => e !== undefined), 0);
 }
 
-type JsonKind = 'null' | 'boolean' | 'integer' | 'number' | 'string' | 'array' | 'object';
+/** More dynamic-looking keys (ids) than this makes an object a map. */
+const dynamicKeyCap = 3;
+
+/** True when property names carry data (emails, tokens, many ids): the object is a map, not a record. */
+function hasDynamicKeys(keys: readonly string[]): boolean {
+  return keys.some((k) => looksLikeSecret(k)) || keys.filter((k) => isIdSegment(k)).length > dynamicKeyCap;
+}
+
+/** Replaces the keys of map-like objects with a single `{key}` entry, recursively. */
+function collapseDynamicKeys(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(collapseDynamicKeys);
+  if (value === null || typeof value !== 'object') return value;
+  const entries = Object.entries(value as Record<string, unknown>);
+  if (hasDynamicKeys(entries.map(([k]) => k))) {
+    return entries.length ? { '{key}': collapseDynamicKeys(entries[0]?.[1]) } : {};
+  }
+  return Object.fromEntries(entries.map(([k, v]) => [k, collapseDynamicKeys(v)]));
+}
+
+type JsonKind ='null' | 'boolean' | 'integer' | 'number' | 'string' | 'array' | 'object';
 
 function kindOf(value: unknown): JsonKind {
   if (value === null) return 'null';
@@ -186,6 +228,9 @@ function kindSchema(kind: JsonKind, values: readonly unknown[], depth: number): 
   if (kind === 'object') {
     if (depth >= schemaDepthMax) return { type: 'object' };
     const objects = values as Record<string, unknown>[];
+    if (hasDynamicKeys(objects.flatMap((o) => Object.keys(o)))) {
+      return { type: 'object', additionalProperties: schemaOf(objects.flatMap((o) => Object.values(o)), depth + 1) };
+    }
     const keys: string[] = [];
     for (const obj of objects) {
       for (const key of Object.keys(obj)) {
@@ -274,7 +319,8 @@ function decodeBody(body: Body | undefined, contentType: string | undefined): De
 }
 
 function truncate(text: string): string {
-  return text.length > exampleTextMaxBytes ? text.slice(0, exampleTextMaxBytes) : text;
+  const bytes = new TextEncoder().encode(text);
+  return bytes.length > exampleTextMaxBytes ? new TextDecoder().decode(bytes.subarray(0, exampleTextMaxBytes)) : text;
 }
 
 const standardHeaders = new Set([
@@ -663,7 +709,7 @@ export function derive(input: DeriveInput): Redacted<ApiDoc> {
       if (staticExtension.test(ex.request.path.split('?', 1)[0] ?? '')) continue;
       const json = (ex.response?.mimeType ?? '').toLowerCase().includes('json');
       if (!keptResourceTypes.has(ex.resourceType) && !(ex.resourceType === 'Other' && json)) continue;
-      const operation = template.template.endsWith('/graphql') ? (graphqlOperation(ex) ?? null) : null;
+      const operation = graphqlOperationKey(ex) ?? null;
       const method = ex.request.method.toUpperCase();
       kept.push({ ex, template, operation, key: `${method} ${ex.request.host}${template.template}${operation ? `#${operation}` : ''}` });
     }
@@ -841,7 +887,11 @@ export function derive(input: DeriveInput): Redacted<ApiDoc> {
     const latest = own[own.length - 1];
     const latestUsed = ownUsed[ownUsed.length - 1];
     const stepSource = latestUsed ?? latest;
-    const inputs = wf.inputs.map((spec) => (spec.secret && spec.example !== undefined ? { ...spec, example: REDACTED } : spec));
+    const inputs = wf.inputs.map((spec) =>
+      spec.example === undefined
+        ? spec
+        : { ...spec, example: spec.secret ? REDACTED : redact(spec.example, { in: 'body', path: `$.${spec.name}` }, policy) },
+    );
     const steps = wf.steps.map((spec) => {
       const run = stepSource?.trace.steps.find((s) => s.id === spec.id);
       const calls = (latestUsed?.calls ?? [])
@@ -926,7 +976,7 @@ function bodyDoc(examples: readonly BodyExample[], fallbackMediaType: string | u
     return {
       mediaType: examples.find((e) => e.hasJson)?.mediaType ?? first.mediaType,
       schema: shapeToJsonSchema(jsons),
-      example: redact(jsons[0], { in: 'body', path: '$' }, policy),
+      example: redact(collapseDynamicKeys(jsons[0]), { in: 'body', path: '$' }, policy),
       undecoded: null,
     };
   }

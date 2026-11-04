@@ -208,8 +208,105 @@ test('derive splits a GraphQL endpoint by operation', () => {
     ex({ seq: 2, step: 'open', method: 'POST', path: '/graphql', reqBody: { operationName: 'B', query: 'mutation B { b }' }, resBody: { data: { b: 1 } } }),
   ]);
   const doc = run([t]);
-  assert.deepEqual(doc.endpoints.map((e) => e.id), [`POST ${host}/graphql#A`, `POST ${host}/graphql#B`]);
-  assert.deepEqual(doc.endpoints.map((e) => e.operation), ['A', 'B']);
+  assert.deepEqual(doc.endpoints.map((e) => e.id), [`POST ${host}/graphql#mutation:B`, `POST ${host}/graphql#query:A`]);
+  assert.deepEqual(doc.endpoints.map((e) => e.operation), ['mutation:B', 'query:A']);
+});
+
+test('derive keeps a same-named query and mutation apart, and anonymous operations by type', () => {
+  const gql = (seq: number, body: unknown) => ex({ seq, step: 'open', method: 'POST', path: '/graphql', reqBody: body, resBody: { data: { n: seq } } });
+  const t = trace('r1', 'create-draft', ['open'], [
+    gql(1, { operationName: 'Item', query: 'query Item { a }' }),
+    gql(2, { operationName: 'Item', query: 'mutation Item { a }' }),
+    gql(3, { query: '{ me { id } }' }),
+    gql(4, { query: 'mutation { reset }' }),
+  ]);
+  const doc = run([t]);
+  assert.deepEqual(doc.endpoints.map((e) => e.operation).sort(), ['mutation:Item', 'mutation:anonymous', 'query:Item', 'query:anonymous']);
+  assert.equal(doc.endpoints.length, 4);
+});
+
+// ---- leaks in adjacent paths ----
+
+function leakDoc(exchanges: Exchange[], wfs: Workflow[] = [workflow]) {
+  return run([trace('r1', 'create-draft', ['open'], exchanges.map((e) => ({ ...e, stepId: 'open' }) as Exchange))], wfs);
+}
+
+test('text bodies: pairs with sensitive names, Bearer tokens and JWTs are redacted', () => {
+  const doc = leakDoc([
+    ex({ seq: 1, path: '/api/text', mimeType: 'text/plain', resBody: 'login ok; refresh=rSECRETTEXT111 and Bearer bSECRETEMBED999 jwt eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.SIGSECRETX' }),
+    ex({ seq: 2, path: '/api/form', method: 'POST', reqContentType: 'text/plain', reqText: 'sid=fSECRETFORM333&x=1', resBody: 'x', mimeType: 'text/plain' }),
+  ]);
+  const text = JSON.stringify(doc);
+  for (const m of ['rSECRETTEXT111', 'bSECRETEMBED999', 'SIGSECRETX', 'fSECRETFORM333']) assert.ok(!text.includes(m), m);
+  const form = doc.endpoints.find((e) => e.pathTemplate === '/api/form')!;
+  assert.equal(form.request!.undecoded, `sid=${'{redacted}'}&x=1`);
+  assert.match(doc.endpoints.find((e) => e.pathTemplate === '/api/text')!.responses['200']!.undecoded!, /^login ok; refresh=\{redacted\} and Bearer \{redacted\}/);
+});
+
+test('strings in JSON bodies: embedded URLs, query strings and policy secrets are scanned', () => {
+  const policy = { extraKeys: [], secretValues: ['plainsecretvalue'] };
+  const doc = derive({
+    target,
+    workflows: [workflow],
+    traces: [
+      {
+        path: 'p',
+        trace: trace('r1', 'create-draft', ['open'], [
+          ex({ seq: 1, step: 'open', path: '/api/embed', resBody: { redirect: 'https://x.example/cb?access_token=eSECRETEMBED222&next=/home', note: 'see plainsecretvalue here', hdr: 'Authorization: Basic dXNlcjpwYXNzd29yZA==' } }),
+        ]),
+      },
+    ],
+    redaction: policy,
+  });
+  const example = doc.endpoints[0]!.responses['200']!.example as Record<string, string>;
+  assert.equal(example.redirect, 'https://x.example/cb?access_token={redacted}&next=/home');
+  assert.equal(example.note, 'see {redacted} here');
+  assert.ok(!JSON.stringify(doc).includes('dXNlcjpwYXNzd29yZA'));
+});
+
+test('dynamic property names do not reach schema or example', () => {
+  const doc = leakDoc([
+    ex({ seq: 1, path: '/api/map', resBody: { 'dyn@keySECRET.io': { n: 1 }, 'other@keySECRET.io': { n: 2 } } }),
+    ex({ seq: 2, path: '/api/ids', resBody: { '1001': 1, '1002': 2, '1003': 3, '1004': 4 } }),
+  ]);
+  const text = JSON.stringify(doc);
+  assert.ok(!text.includes('keySECRET'));
+  const map = doc.endpoints.find((e) => e.pathTemplate === '/api/map')!.responses['200']!;
+  assert.deepEqual(map.schema, { type: 'object', additionalProperties: { type: 'object', properties: { n: { type: 'integer' } }, required: ['n'] } });
+  assert.deepEqual(map.example, { '{key}': { n: 1 } });
+  const ids = doc.endpoints.find((e) => e.pathTemplate === '/api/ids')!.responses['200']!;
+  assert.deepEqual(ids.schema, { type: 'object', additionalProperties: { type: 'integer' } });
+  assert.deepEqual(ids.example, { '{key}': 1 });
+});
+
+test('secret-looking path segments become {token} params in ids and workflow calls', () => {
+  assert.equal(templatePath('/reset/passwordSECRETnodigit').template, '/reset/{token}');
+  assert.equal(templatePath('/auth/password-reset').template, '/auth/password-reset');
+  assert.equal(templatePath('/api/resetPasswordConfirm').template, '/api/resetPasswordConfirm');
+  const doc = leakDoc([ex({ seq: 1, path: '/reset/passwordSECRETnodigit' })]);
+  assert.ok(!JSON.stringify(doc).includes('passwordSECRET'));
+  assert.equal(doc.endpoints[0]!.id, `GET ${host}/reset/{token}`);
+  assert.equal(doc.endpoints[0]!.pathParams[0]!.example, '{redacted}');
+  assert.equal(doc.workflows[0]!.sequence[0]!.endpointId, `GET ${host}/reset/{token}`);
+});
+
+test('non-secret input examples are redacted by the same rules as Case inputs', () => {
+  const wf = WorkflowSchema.parse({
+    workflowVersion: 1,
+    id: 'create-draft',
+    name: 'n',
+    goal: 'g',
+    effect: 'read',
+    inputs: [
+      { name: 'contact', kind: 'text', example: 'person@corp.example' },
+      { name: 'title', kind: 'text', example: 'Blue lamp' },
+    ],
+    steps: [{ id: 'open', do: 'x' }],
+  });
+  const doc = leakDoc([ex({ seq: 1, path: '/api/a', resBody: { a: 1 } })], [wf]);
+  assert.ok(!JSON.stringify(doc).includes('person@corp.example'));
+  assert.deepEqual(doc.workflows[0]!.inputs.map((i) => i.example), ['{redacted}', 'Blue lamp']);
+  assert.deepEqual(doc.workflows[0]!.cases[0]!.inputs, { contact: '{redacted}', title: 'Blue lamp' });
 });
 
 // ---- shapeToJsonSchema ----
@@ -353,7 +450,10 @@ test('derive groups two runs of one workflow into one endpoint set with a Case p
   assert.deepEqual(publish.observedIn.map((e) => e.runId), ['r1', 'r2']);
   assert.equal(publish.pathParams[0]?.source, 'binding');
   assert.deepEqual(publish.bindings.filter((b) => b.to.location === 'path').map((b) => [b.from.endpointId, b.from.path, b.seen]), [[`POST ${host}/api/drafts`, '$.id', 2]]);
-  assert.ok(publish.bindings.some((b) => b.from.location === 'response.body' && b.from.path === '$.csrf' && b.to.location === 'header'));
+  assert.deepEqual(
+    publish.bindings.filter((b) => b.to.location === 'header').map((b) => [b.from.endpointId, b.from.location, b.from.path, b.to.path, b.seen]),
+    [[`GET ${host}/api/session`, 'response.body', '$.csrf', 'x-csrf-token', 2]],
+  );
 
   const wf = doc.workflows[0]!;
   assert.equal(wf.cases.length, 2);
