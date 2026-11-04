@@ -13,6 +13,7 @@
 import { chromium, type Browser } from 'playwright';
 import net from 'node:net';
 import { CaptureError } from '../apidocs/errors.js';
+import { cdpConnectTimeoutMs as attachProbeTimeoutMs } from '../apidocs/limits.js';
 import type { ProxyConfig } from './proxy.js';
 
 export interface BrowserHandle {
@@ -153,8 +154,6 @@ export class AttachedBrowserProvider implements BrowserProvider {
   }
 }
 
-/** Bound on each attach probe; a Chrome that is listening answers in milliseconds. */
-const attachProbeTimeoutMs = 5_000;
 const attachFix =
   'Start Chrome on a copy of your profile: chrome --remote-debugging-port=9222 --user-data-dir=<a copy of your profile folder>. ' +
   'Chrome 136 and later ignore --remote-debugging-port on the default profile folder, so copy it first. ' +

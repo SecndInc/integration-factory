@@ -18,6 +18,8 @@ import {
   ambientMinSteps,
   bindingMinNumberDigits,
   bindingMinStringLength,
+  computedMinEntropy,
+  computedMinLength,
   exampleTextMaxBytes,
   schemaDepthMax,
   schemaKeysPerObjectMax,
@@ -488,8 +490,6 @@ function snapshotSources(snapshot: Trace['snapshots'][number]): Map<string, Sour
 }
 
 const derivedNamePattern = /signature|hmac|(?:^|[-_.[$])(?:sig|hash|digest|nonce|checksum|mac)(?:[-_.\]]|$)/i;
-const computedMinLength = 16;
-const computedMinEntropy = 3.5;
 
 function entropyOf(text: string): number {
   const counts = new Map<string, number>();

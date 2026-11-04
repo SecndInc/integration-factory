@@ -15,6 +15,7 @@ import path from 'node:path';
 import { derive } from './apidocs/derive.js';
 import { recordWithHumanDriver, siteIdOf, type BrowserSource } from './apidocs/drivers/human.js';
 import { CaptureError, exitCodeFor } from './apidocs/errors.js';
+import { showBodyMaxChars } from './apidocs/limits.js';
 import { toHar } from './apidocs/har.js';
 import { emptyRedactionPolicy, isSensitiveName, REDACTED } from './apidocs/redact.js';
 import { renderApiDoc } from './apidocs/render/index.js';
@@ -239,8 +240,6 @@ export async function record(args: ParsedArgs): Promise<number> {
 // inspect
 // ---------------------------------------------------------------------------------------------
 
-/** Longest body printed by `inspect --show` without --raw. */
-const showBodyMaxChars = 4000;
 
 function hostMatches(host: string, wanted: string): boolean {
   return host === wanted || host.endsWith(`.${wanted}`);

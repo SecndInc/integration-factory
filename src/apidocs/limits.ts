@@ -23,3 +23,10 @@ export const bindingMinNumberDigits = 4;
 export const ambientMinSteps = 3;
 /** Text bodies in examples are truncated here. */
 export const exampleTextMaxBytes = 64 * 1024;
+/** Connecting the browser-level CDP socket, and probing `/json/version` or `connectOverCDP` in attach mode. */
+export const cdpConnectTimeoutMs = 5_000;
+/** `inspect --show` prints at most this much of a body unless `--raw`. */
+export const showBodyMaxChars = 4000;
+/** A value with no source counts as `computed` when it is at least this long and this random (Shannon bits per char). */
+export const computedMinLength = 16;
+export const computedMinEntropy = 3.5;
