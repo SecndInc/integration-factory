@@ -92,8 +92,8 @@ const recordedNetworkEvents = new Set([
   'Network.eventSourceMessageReceived',
 ]);
 const bodyTypeSet = new Set<string>(bodyTypes);
-/** Bodies the renderer can still lose (a navigation, buffer pressure). Anything else is an `error`. */
-const evictedPattern = /No resource with given identifier|No data found for resource|evicted/i;
+/** Bodies the renderer can still lose (a navigation, buffer pressure, a target that closed). Anything else is an `error`. */
+const evictedPattern = /No resource with given identifier|No data found for resource|Session with given id not found|evicted/i;
 const autoAttach = { autoAttach: true, waitForDebuggerOnStart: true, flatten: true } as const;
 const holdPatterns = [
   { resourceType: 'XHR', requestStage: 'Response' },
@@ -139,7 +139,13 @@ class TraceWriter {
   private seq = 0;
   private sealed = false;
   private failure: Error | undefined;
-  private lastWrite: Promise<void> = Promise.resolve();
+  /**
+   * Every line passes through this one chain, in seq order. A write that fills the stream's buffer
+   * holds the chain until 'drain', so the stream never buffers more than one line past its high-water mark.
+   */
+  private chain: Promise<void> = Promise.resolve();
+  /** Resolves when the most recently issued write has reached the file descriptor. */
+  private flushed: Promise<void> = Promise.resolve();
 
   private constructor(
     private readonly fd: number,
@@ -188,13 +194,16 @@ class TraceWriter {
 
   /** Resolves when every line queued so far is on the file descriptor and fsynced. */
   async sync(): Promise<void> {
-    await this.lastWrite;
+    await this.chain;
+    await this.flushed;
     if (this.failure) throw this.failure;
     if (this.stream.closed) return;
     await new Promise<void>((resolve, reject) => fsync(this.fd, (error) => (error ? reject(error) : resolve())));
   }
 
   async close(): Promise<void> {
+    await this.chain;
+    await this.flushed;
     if (this.stream.closed) return;
     await new Promise<void>((resolve) => {
       this.stream.once('close', () => resolve());
@@ -204,11 +213,28 @@ class TraceWriter {
 
   private append(record: object): void {
     const text = `${JSON.stringify(record)}\n`;
-    this.lastWrite = new Promise<void>((resolve) => {
-      this.stream.write(text, (error) => {
+    this.chain = this.chain.then(() => this.writeOne(text));
+  }
+
+  /** Resolves when the stream will take the next line: at once, or after 'drain' when write() said it is full. */
+  private writeOne(text: string): Promise<void> {
+    if (this.failure || this.stream.destroyed) return Promise.resolve();
+    let accepted = true;
+    this.flushed = new Promise<void>((resolve) => {
+      accepted = this.stream.write(text, (error) => {
         if (error) this.failure ??= error;
         resolve();
       });
+    });
+    if (accepted) return Promise.resolve();
+    return new Promise<void>((resolve) => {
+      const go = () => {
+        this.stream.off('drain', go);
+        this.stream.off('close', go);
+        resolve();
+      };
+      this.stream.on('drain', go);
+      this.stream.on('close', go); // a failed stream never drains; let the chain finish
     });
   }
 }
@@ -228,6 +254,11 @@ export class Recorder {
   private readonly inflight = new Set<string>();
   /** Requests whose response body the Fetch path reads; the Network path leaves them alone. */
   private readonly heldKeys = new Set<string>();
+  /**
+   * Origins a snapshot reads cookies and storage for. Seeded from scope.hosts (http and https) and from the
+   * URL of every attached in-scope page, so a session that was already loaded before attach (attach mode,
+   * a logged-in Chrome) is in the first snapshot; requests add the origins they reach.
+   */
   private readonly inScopeOrigins = new Set<string>();
   private lastActivityAt = Date.now();
   private readonly settleWaiters = new Set<() => void>();
@@ -262,6 +293,12 @@ export class Recorder {
     this.hold = opts.bodies?.hold ?? false;
     this.snapshotsOn = opts.snapshots ?? true;
     this.scopeHosts = opts.scope.hosts;
+    for (const host of this.scopeHosts) {
+      for (const scheme of ['https', 'http']) {
+        const seed = parseUrl(`${scheme}://${host}`);
+        if (seed) this.inScopeOrigins.add(seed.origin);
+      }
+    }
   }
 
   /**
@@ -308,18 +345,26 @@ export class Recorder {
     cdp.onClose((reason) => {
       recorder.browserClosed = true;
       recorder.log(`recorder: browser connection closed (${reason}); ending the trace as interrupted`);
-      void recorder.finish('browser-closed', 'interrupted');
+      recorder.finish('browser-closed', 'interrupted').catch((error: unknown) => {
+        recorder.log(`recorder: could not write the end line after the browser closed: ${describe(error)}`);
+      });
     });
 
+    // On the error paths the end line is best effort; the attach failure is what the caller must see.
+    const endQuietly = () =>
+      recorder.finish('error', 'failed').then(
+        () => undefined,
+        (error: unknown) => recorder.log(`recorder: could not write the end line after a failed attach: ${describe(error)}`),
+      );
     try {
       await cdp.send('Target.setAutoAttach', autoAttach);
       await recorder.attachSettled();
     } catch (error) {
-      await recorder.finish('error', 'failed');
+      await endQuietly();
       throw attachFailed(`Target.setAutoAttach failed: ${describe(error)}`);
     }
     if (recorder.attachFailures.length > 0) {
-      await recorder.finish('error', 'failed');
+      await endQuietly();
       throw attachFailed(recorder.attachFailures.join('; '));
     }
     return recorder;
@@ -531,6 +576,10 @@ export class Recorder {
     };
     this.sessions.set(info.sessionId, info);
     this.live.targets++;
+    if (info.type === 'page' || info.type === 'iframe') {
+      const pageUrl = parseUrl(info.url);
+      if (pageUrl && hostInScope(pageUrl.hostname, this.scopeHosts)) this.inScopeOrigins.add(pageUrl.origin);
+    }
     this.writer.write({
       kind: 'target',
       event: 'attached',

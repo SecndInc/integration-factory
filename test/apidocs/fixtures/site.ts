@@ -9,11 +9,14 @@
 //   /api/set-cookie       sets `fixture_session`
 //   /slow                 answers after slowMs
 //   /api/popup-data       JSON for the popup
+//   /api/big              a bigBodyBytes JSON body, larger than a write stream's buffer, so the trace writer drains
 
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 
 export const slowMs = 300;
+export const bigBodyBytes = 200 * 1024;
+const bigBody = JSON.stringify({ filler: 'x'.repeat(bigBodyBytes - '{"filler":""}'.length) });
 
 const indexHtml = `<!doctype html>
 <html><head><meta charset="utf-8"><title>fixture</title></head>
@@ -112,6 +115,8 @@ export async function startFixtureSite(): Promise<FixtureSite> {
         return;
       case 'GET /api/popup-data':
         return json({ popup: true });
+      case 'GET /api/big':
+        return send(200, 'application/json', bigBody);
       default:
         return send(404, 'text/plain', 'not found');
     }

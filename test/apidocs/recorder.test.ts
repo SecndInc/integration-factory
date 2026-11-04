@@ -8,10 +8,11 @@ import os from 'node:os';
 import path from 'node:path';
 import test, { type TestContext } from 'node:test';
 import { chromium, type Browser, type Page } from 'playwright';
+import { Cdp } from '../../src/apidocs/cdp.js';
 import { CaptureError } from '../../src/apidocs/errors.js';
 import { Recorder, type RecorderOptions } from '../../src/apidocs/recorder.js';
 import { TraceLineSchema, type Counts, type RunId, type SiteId, type StepId } from '../../src/apidocs/types.js';
-import { slowMs, startFixtureSite, type FixtureSite } from './fixtures/site.js';
+import { bigBodyBytes, slowMs, startFixtureSite, type FixtureSite } from './fixtures/site.js';
 
 const chromiumPath = (() => {
   try {
@@ -123,6 +124,8 @@ test('records a multi-step Playwright run through real Chromium', { skip: skipBr
     step.action('click', '#xhr');
     await page.click('#xhr');
     await waitDone(page, 'xhr');
+    // A body line larger than the write stream's buffer: the writer must wait for 'drain'.
+    await page.evaluate(() => fetch('/api/big').then((r) => r.json()));
   });
   await recorder.step(sid('upload'), 2, 'Upload a photo', async () => {
     await page.click('#upload');
@@ -247,6 +250,13 @@ test('records a multi-step Playwright run through real Chromium', { skip: skipBr
     assertInStep('json', requestFor(pathname, method), `${method} ${pathname}`);
   }
   assert.equal(requestFor('/api/xhr-data').params.type, 'XHR');
+  const big = requestFor('/api/big');
+  const bigBody = bodyFor(big, 'response');
+  assert.ok(bigBody, 'large response has a body line');
+  assert.equal(bigBody.state, 'ok');
+  assert.equal(bigBody.bytes, bigBodyBytes);
+  assert.equal(bigBody.text.length, bigBodyBytes, 'the large body line was written whole');
+  assertInStep('json', big, 'GET /api/big');
   const getClick = lines.find((l) => l.kind === 'action' && l.stepId === 'json' && l.detail === '#get');
   assert.ok(getClick, 'action line for #get');
   assert.ok(getClick.seq < requestFor('/api/items').seq, 'the action marker precedes the request it caused');
@@ -268,6 +278,17 @@ test('records a multi-step Playwright run through real Chromium', { skip: skipBr
   const setCookie = Object.entries(extra.params.headers as Record<string, string>).find(([k]) => k.toLowerCase() === 'set-cookie');
   assert.ok(setCookie && /fixture_session=/.test(setCookie[1]), 'ExtraInfo carries the raw set-cookie header');
   assertInStep('redirect-cookie', cookie, 'set-cookie call');
+
+  // Request-side wire headers: a later request carries the cookie in requestWillBeSentExtraInfo.
+  const slowRequest = requestFor('/slow');
+  const wire = cdpLines.find((l) => l.method === 'Network.requestWillBeSentExtraInfo' && keyOf(l) === keyOf(slowRequest));
+  assert.ok(wire, 'request after the cookie has its requestWillBeSentExtraInfo line');
+  const wireCookie = Object.entries(wire.params.headers as Record<string, string>).find(([k]) => k.toLowerCase() === 'cookie');
+  assert.ok(wireCookie && /fixture_session=s3ss10n/.test(wireCookie[1]), 'wire headers carry the Cookie the renderer never shows');
+  assert.ok(
+    (wire.params.associatedCookies as Raw[]).some((c) => c.cookie.name === 'fixture_session' && c.blockedReasons.length === 0),
+    'associatedCookies lists the sent cookie',
+  );
 
   // settle(): returned with nothing in flight, after /slow finished.
   assert.deepEqual(settled, { inflight: 0 });
@@ -369,6 +390,55 @@ test('a browser that closes mid-step ends the trace as browser-closed, interrupt
   assert.deepEqual(last.counts, counts);
   assert.ok(!lines.some((l) => l.kind === 'step' && l.phase === 'end'), 'the open step has no end line');
   assert.ok(lines.some((l) => l.kind === 'cdp' && l.method === 'Network.requestWillBeSent'), 'traffic before the close is kept');
+});
+
+// ---- Attach mode: the session was loaded before the recorder attached
+
+test('the first snapshot holds cookies and storage of a page loaded before attach', { skip: skipBrowser }, async (t) => {
+  const h = await startHarness(t);
+  const page = await (await h.browser.newContext()).newPage();
+  await page.goto(`${h.site.url}/`);
+  await page.evaluate(() => {
+    document.cookie = 'preloaded_session=before-attach; path=/';
+    localStorage.setItem('preloaded-key', 'before-attach');
+  });
+
+  const opts = recorderOptions(h, 'trace-preloaded.jsonl');
+  const recorder = await Recorder.attach(opts);
+  await recorder.step(sid('look'), 0, 'Look at the page', async () => {
+    // No request: the snapshot must come from the seeded origins alone.
+  });
+  const counts = await recorder.close('completed');
+
+  const { lines } = await readRaw(opts.tracePath);
+  for (const line of lines) assert.ok(TraceLineSchema.safeParse(line).success);
+  assert.equal(counts.exchanges, 0, 'the step made no request');
+  const pageTarget = lines.find((l) => l.kind === 'target' && l.type === 'page');
+  assert.equal(pageTarget?.url, `${h.site.url}/`, 'the preloaded page is attached with its URL');
+  const snapshot = lines.find((l) => l.kind === 'snapshot' && l.stepId === 'look');
+  assert.ok(snapshot, 'step 1 has a snapshot');
+  assert.ok(
+    snapshot.cookies.some((c: Raw) => c.name === 'preloaded_session' && c.value === 'before-attach'),
+    `cookie set before attach is in the first snapshot: ${JSON.stringify(snapshot.cookies)}`,
+  );
+  const storage = snapshot.storage.find((s: Raw) => s.origin === h.site.url);
+  assert.equal(storage?.local['preloaded-key'], 'before-attach', `storage set before attach is in the first snapshot: ${JSON.stringify(snapshot.storage)}`);
+});
+
+// ---- CDP client: a throwing listener never escapes the socket handler
+
+test('an event listener that throws closes the CDP connection with that reason', { skip: skipBrowser }, async (t) => {
+  const h = await startHarness(t);
+  await (await h.browser.newContext()).newPage(); // a target, so discovery emits an event
+  const cdp = await Cdp.connect({ cdpUrl: h.cdpUrl });
+  const closed = new Promise<string>((resolve) => cdp.onClose(resolve));
+  cdp.onEvent(() => {
+    throw new Error('listener bug');
+  });
+  await cdp.send('Target.setDiscoverTargets', { discover: true }).catch(() => undefined);
+  assert.match(await closed, /event listener threw on Target\.\w+: listener bug/);
+  await assert.rejects(cdp.send('Browser.getVersion'), /connection closed/);
+  await cdp.close();
 });
 
 // ---- No browser

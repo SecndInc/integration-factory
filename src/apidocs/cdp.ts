@@ -53,6 +53,8 @@ export class Cdp {
   private closed = false;
   /** True once close() was called; the close listeners then stay silent. */
   private closedByUs = false;
+  /** Set when an event listener threw: the connection is ended and this becomes the close reason. */
+  private listenerFailure: string | undefined;
   private readonly socketClosed: Promise<void>;
 
   private constructor(private readonly socket: WebSocket) {
@@ -64,7 +66,7 @@ export class Cdp {
       this.rejectPending('connection closed');
       markClosed();
       if (this.closedByUs) return;
-      const reason = `socket closed (code ${event.code}${event.reason ? `: ${event.reason}` : ''})`;
+      const reason = this.listenerFailure ?? `socket closed (code ${event.code}${event.reason ? `: ${event.reason}` : ''})`;
       const listeners = this.closeListeners.splice(0);
       for (const listener of listeners) listener(reason);
     });
@@ -83,7 +85,7 @@ export class Cdp {
    * Rejects with an Error whose message is the CDP error message (e.g. "No resource with given identifier found").
    */
   send<T = unknown>(method: string, params?: object, sessionId?: SessionId): Promise<T> {
-    if (this.closed || this.closedByUs) return Promise.reject(new Error('connection closed'));
+    if (this.closed || this.closedByUs || this.listenerFailure) return Promise.reject(new Error('connection closed'));
     const id = this.nextId++;
     const message = JSON.stringify({ id, method, params: params ?? {}, ...(sessionId ? { sessionId } : {}) });
     return new Promise<T>((resolve, reject) => {
@@ -97,7 +99,11 @@ export class Cdp {
     });
   }
 
-  /** Every event from every session, in arrival order. Listeners run synchronously. */
+  /**
+   * Every event from every session, in arrival order. Listeners run synchronously.
+   * A listener that throws ends the connection: later events would be missing from what it records,
+   * so the close listeners fire with the error as the reason. Nothing is thrown out of the socket handler.
+   */
   onEvent(listener: (event: CdpEvent) => void): void {
     this.eventListeners.push(listener);
   }
@@ -124,6 +130,7 @@ export class Cdp {
   }
 
   private onMessage(data: unknown): void {
+    if (this.listenerFailure) return; // the connection is ending; deliver nothing more
     let message: CdpMessage;
     try {
       message = JSON.parse(typeof data === 'string' ? data : Buffer.from(data as ArrayBuffer).toString('utf8')) as CdpMessage;
@@ -144,15 +151,26 @@ export class Cdp {
       params: message.params,
       ...(message.sessionId ? { sessionId: message.sessionId as SessionId } : {}),
     };
-    let firstError: unknown;
     for (const listener of this.eventListeners) {
       try {
         listener(event);
       } catch (error) {
-        firstError ??= error;
+        this.endAfterListenerError(`event listener threw on ${event.method}: ${describe(error)}`);
+        return;
       }
     }
-    if (firstError !== undefined) throw firstError;
+  }
+
+  /** Closes the socket from our side without marking it as close(); the close event reports `reason`. */
+  private endAfterListenerError(reason: string): void {
+    if (this.listenerFailure || this.closed || this.closedByUs) return;
+    this.listenerFailure = reason;
+    this.rejectPending('connection closed');
+    try {
+      this.socket.close();
+    } catch {
+      // Already closing; the close event still fires with the stored reason.
+    }
   }
 
   private rejectPending(reason: string): void {
