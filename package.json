@@ -17,7 +17,11 @@
     "visual:smoke": "tsx scripts/visual-adviser-smoke.ts",
     "test": "node --import tsx --test \"test/**/*.test.ts\"",
     "typecheck": "tsc --noEmit",
-    "apidocs": "tsx src/apidocs-cli.ts"
+    "apidocs": "tsx src/apidocs-cli.ts",
+    "apidocs:chrome": "tsx scripts/apidocs-chrome.ts",
+    "apidocs:tour": "tsx scripts/apidocs-readonly-tour.ts",
+    "apidocs:scan": "tsx scripts/apidocs-docs-scan.ts",
+    "apidocs:fixture": "tsx scripts/apidocs-fixture-site.ts"
   },
   "dependencies": {
     "playwright": "^1.48.0",
