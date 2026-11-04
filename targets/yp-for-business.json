@@ -1,0 +1,6 @@
+{
+  "name": "YP for Business",
+  "startUrl": "https://ypforbusiness.yellowpages.ca/",
+  "host": "yellowpages.ca",
+  "environment": "production"
+}

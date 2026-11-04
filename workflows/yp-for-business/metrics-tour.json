@@ -1,0 +1,233 @@
+{
+  "workflowVersion": 1,
+  "id": "metrics-tour",
+  "name": "YP Metrics tour",
+  "goal": "From the signed-in portal, open the YP Metrics app through its SSO link and read every dashboard, section tab and report view it lists.",
+  "effect": "read",
+  "preconditions": [
+    "signed in to the portal"
+  ],
+  "inputs": [],
+  "steps": [
+    {
+      "id": "open-portal",
+      "do": "Open https://ypforbusiness.yellowpages.ca/",
+      "hints": [
+        "https://ypforbusiness.yellowpages.ca/"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "open-metrics",
+      "do": "Click the \"YP METRICS\" link in the portal navigation (opens the metrics app in a new window)",
+      "hints": [
+        "https://mymetrics.yp.ca/client/dist/"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "open-dashboards",
+      "do": "In the metrics app open \"Dashboards\"",
+      "hints": [
+        "https://mymetrics.yp.ca/client/dist/#/dashboards"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "open-fav-dashboards-92",
+      "do": "In the metrics app open \"YP Metrics - English\"",
+      "hints": [
+        "https://mymetrics.yp.ca/client/dist/#/fav/dashboards/92"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "open-fav-dashboards-139",
+      "do": "In the metrics app open \"PJ Métriques - Français\"",
+      "hints": [
+        "https://mymetrics.yp.ca/client/dist/#/fav/dashboards/139"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "open-reportstudio",
+      "do": "In the metrics app open \"Report Studio\"",
+      "hints": [
+        "https://mymetrics.yp.ca/client/dist/#/reportstudio"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "open-scheduledreports",
+      "do": "In the metrics app open \"Report Scheduler\"",
+      "hints": [
+        "https://mymetrics.yp.ca/client/dist/#/scheduledreports"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "open-executivesummaries",
+      "do": "In the metrics app open \"Executive Summaries\"",
+      "hints": [
+        "https://mymetrics.yp.ca/client/dist/#/executivesummaries"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "open-reportingtemplates",
+      "do": "In the metrics app open \"Report Covers\"",
+      "hints": [
+        "https://mymetrics.yp.ca/client/dist/#/reportingtemplates"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "open-leads",
+      "do": "In the metrics app open \"Leads Dashboard\"",
+      "hints": [
+        "https://mymetrics.yp.ca/client/dist/#/leads"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "open-manageleads",
+      "do": "In the metrics app open \"Manage Leads\"",
+      "hints": [
+        "https://mymetrics.yp.ca/client/dist/#/manageleads"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "open-endcustomers",
+      "do": "In the metrics app open \"End Customers\"",
+      "hints": [
+        "https://mymetrics.yp.ca/client/dist/#/endcustomers"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "open-tags",
+      "do": "In the metrics app open \"Lead Tags\"",
+      "hints": [
+        "https://mymetrics.yp.ca/client/dist/#/tags"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "open-dashboard-english",
+      "do": "Open the English dashboard",
+      "hints": [
+        "https://mymetrics.yp.ca/client/dist/#/fav/dashboards/92"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "tab-overview",
+      "do": "Switch to the \"Overview\" tab of the dashboard",
+      "hints": [
+        "https://mymetrics.yp.ca/client/dist/#/fav/dashboards/92/section/125"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "tab-yp-network",
+      "do": "Switch to the \"YP Network\" tab of the dashboard",
+      "hints": [
+        "https://mymetrics.yp.ca/client/dist/#/fav/dashboards/92/section/125"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "tab-website",
+      "do": "Switch to the \"Website\" tab of the dashboard",
+      "hints": [
+        "https://mymetrics.yp.ca/client/dist/#/fav/dashboards/92/section/169"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "tab-print-advertising",
+      "do": "Switch to the \"Print Advertising\" tab of the dashboard",
+      "hints": [
+        "https://mymetrics.yp.ca/client/dist/#/fav/dashboards/92/section/171"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "tab-sem",
+      "do": "Switch to the \"SEM\" tab of the dashboard",
+      "hints": [
+        "https://mymetrics.yp.ca/client/dist/#/fav/dashboards/92/section/343"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "tab-facebook-ads-management",
+      "do": "Switch to the \"Facebook Ads Management\" tab of the dashboard",
+      "hints": [
+        "https://mymetrics.yp.ca/client/dist/#/fav/dashboards/92/section/2267"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "range-30-days",
+      "do": "Apply the \"30 Days\" date range",
+      "hints": [
+        "https://mymetrics.yp.ca/client/dist/#/fav/dashboards/92/section/1592"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "range-last-month",
+      "do": "Apply the \"Last Month\" date range",
+      "hints": [
+        "https://mymetrics.yp.ca/client/dist/#/fav/dashboards/92/section/1592"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    }
+  ]
+}
