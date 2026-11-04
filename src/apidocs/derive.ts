@@ -648,7 +648,8 @@ function slugify(name: string): string {
 }
 
 function hostMatches(host: string, scope: readonly string[]): boolean {
-  const h = host.toLowerCase();
+  // Same rule as inScope in trace.ts: the port is not part of the host (a loopback fixture on :61160 is 127.0.0.1).
+  const h = host.toLowerCase().replace(/:\d+$/, '');
   return scope.some((s) => h === s || h.endsWith(`.${s}`));
 }
 

@@ -212,6 +212,14 @@ test('derive splits a GraphQL endpoint by operation', () => {
   assert.deepEqual(doc.endpoints.map((e) => e.operation), ['mutation:B', 'query:A']);
 });
 
+test('derive matches a request host that carries a port against a scope host without one', () => {
+  const e = ex({ seq: 1, step: 'open', path: '/api/items', resBody: { items: [] } });
+  (e.request as { host: string }).host = `${host}:8443`;
+  const doc = run([trace('r1', 'create-draft', ['open'], [e])]);
+  assert.equal(doc.endpoints.length, 1);
+  assert.equal(doc.endpoints[0]?.pathTemplate, '/api/items');
+});
+
 test('derive keeps a same-named query and mutation apart, and anonymous operations by type', () => {
   const gql = (seq: number, body: unknown) => ex({ seq, step: 'open', method: 'POST', path: '/graphql', reqBody: body, resBody: { data: { n: seq } } });
   const t = trace('r1', 'create-draft', ['open'], [

@@ -10,6 +10,7 @@ import { createHash } from 'node:crypto';
 import { execSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
+import { cwdAt, splitSegments } from './shell.mjs';
 
 /** The directory the command runs in: the tool call's cwd (a worktree counts), else the project. */
 let root = process.env.CLAUDE_PROJECT_DIR || process.cwd();
@@ -58,46 +59,13 @@ function sitesTouchedByAdd(tokens) {
   return [...sites];
 }
 
-/** Split a shell command at `&&`, `||`, `;` and newlines that sit outside quotes. */
-function splitSegments(cmd) {
-  const out = [];
-  let cur = '';
-  let quote = null;
-  for (let i = 0; i < cmd.length; i++) {
-    const ch = cmd[i];
-    if (quote) {
-      cur += ch;
-      if (ch === '\\' && quote === '"' && i + 1 < cmd.length) cur += cmd[++i];
-      else if (ch === quote) quote = null;
-      continue;
-    }
-    if (ch === '"' || ch === "'") {
-      quote = ch;
-      cur += ch;
-      continue;
-    }
-    const two = cmd.slice(i, i + 2);
-    if (two === '&&' || two === '||') {
-      out.push(cur);
-      cur = '';
-      i++;
-      continue;
-    }
-    if (ch === ';' || ch === '\n') {
-      out.push(cur);
-      cur = '';
-      continue;
-    }
-    cur += ch;
-  }
-  out.push(cur);
-  return out;
-}
-
 export function check(command) {
   const cmd = String(command || '');
   const segments = splitSegments(cmd);
-  for (const segment of segments) {
+  const start = root;
+  for (const [index, segment] of segments.entries()) {
+    // `cd <worktree> && git add ...` is judged against the worktree, not the session cwd.
+    root = cwdAt(segments, index, start);
     const tokens = segment.trim().split(/\s+/);
     const gi = tokens.indexOf('git');
     if (gi >= 0) {

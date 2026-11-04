@@ -62,8 +62,10 @@ function operation(doc: ApiDoc, ep: Endpoint, usedIds: Set<string>, serverUrls: 
   const tags = tagsOf(doc, ep);
   if (tags.length > 0) op['tags'] = tags;
   if (ep.request !== null) op['requestBody'] = requestBody(ep.request);
+  // An endpoint seen without cookies or auth headers is public as observed: `security: []` says so
+  // explicitly, which is what linters (Redocly security-defined) ask for instead of silence.
   const security = securityRequirement(ep);
-  if (security !== null) op['security'] = [security];
+  op['security'] = security === null ? [] : [security];
   const url = ep.host.includes('://') ? ep.host : `https://${ep.host}`;
   if (serverUrls.length !== 1 || serverUrl(serverUrls[0]!) !== url) op['servers'] = [{ url }];
   return op;

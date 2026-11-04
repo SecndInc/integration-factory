@@ -89,6 +89,26 @@ test('guard-bash: docs/apis/<site> is staged only with a passing, current REVIEW
   assert.equal(run('guard-bash.mjs', bash('git add .'), root).status, 2, 'git add . is caught too');
 });
 
+test('guard-bash: a cd prefix moves the gate to that directory (worktrees)', async () => {
+  const root = await project();
+  const other = await project();
+  await docs(other, 'widgetry');
+  const cmd = `cd ${other.replace(/\\/g, '/')} && git add docs/apis/widgetry`;
+  let r = run('guard-bash.mjs', { ...bash(cmd), cwd: root }, root);
+  assert.equal(r.status, 2, 'the docs live in the other checkout and have no REVIEW.json');
+  assert.match(r.stderr, /no REVIEW\.json/);
+  await fs.writeFile(path.join(other, 'docs', 'apis', 'widgetry', 'REVIEW.json'), JSON.stringify({ verdict: 'pass', hash: await hashDocs(path.join(other, 'docs', 'apis', 'widgetry')) }));
+  r = run('guard-bash.mjs', { ...bash(cmd), cwd: root }, root);
+  assert.equal(r.status, 0, r.stderr);
+  const cwd = spawnSync(
+    process.execPath,
+    ['-e', `import(${JSON.stringify(pathToFileURL(path.join(hooksDir, 'shell.mjs')).href)}).then(m => console.log(JSON.stringify([m.finalCwd('cd sub && npm run apidocs -- build x', 'C:/base'), m.finalCwd('cd "C:/else where"; cd; ls', 'C:/base'), m.finalCwd('git status', 'C:/base')])))`],
+    { encoding: 'utf8' },
+  );
+  assert.equal(cwd.status, 0, cwd.stderr);
+  assert.deepEqual(JSON.parse(cwd.stdout.trim()).map((p: string) => p.replace(/\\/g, '/')), ['C:/base/sub', 'C:/base', 'C:/base']);
+});
+
 test('guard-bash: write workflows record only against staging/test/sandbox targets, with an inverse', async () => {
   const root = await project();
   let r = run('guard-bash.mjs', bash('npm run apidocs -- record widgetry --workflow workflows/widgetry/create-item.json --attach http://127.0.0.1:9222'), root);

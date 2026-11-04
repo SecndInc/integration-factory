@@ -73,6 +73,9 @@ test('toOpenApi: one operation per api endpoint, inlined schemas, no $ref anywhe
   assert.deepEqual(api.components.securitySchemes.cookie_session_id, { type: 'apiKey', in: 'cookie', name: 'session_id' });
   assert.deepEqual(api.components.securitySchemes['header_x-csrf-token'], { type: 'apiKey', in: 'header', name: 'x-csrf-token' });
   assert.deepEqual(get.security, [{ cookie_session_id: [], 'header_x-csrf-token': [] }]);
+  for (const [p, item] of Object.entries<Record<string, { security?: unknown }>>(api.paths)) {
+    for (const [m, op] of Object.entries(item)) assert.ok(Array.isArray(op.security), `${m.toUpperCase()} ${p} declares security (an empty list when observed without auth)`);
+  }
   assert.equal(api['x-coverage'].bindings, 1);
   assert.equal(api['x-workflows'][0].sequence.length, 2);
 });

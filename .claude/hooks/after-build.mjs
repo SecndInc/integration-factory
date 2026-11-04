@@ -5,6 +5,7 @@
 
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
+import { finalCwd } from './shell.mjs';
 
 const root = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 
@@ -29,7 +30,8 @@ async function main() {
   if (!/^(Bash|PowerShell)$/.test(input.tool_name || '')) return 0;
   const site = siteOf(input.tool_input?.command);
   if (!site || site.endsWith('.json')) return 0;
-  const cwd = typeof input.cwd === 'string' && input.cwd ? input.cwd : root;
+  // The scan runs where the build ran: a `cd <worktree> && ...` prefix moves it there.
+  const cwd = finalCwd(input.tool_input?.command, typeof input.cwd === 'string' && input.cwd ? input.cwd : root);
   const result = spawnSync('npx', ['tsx', 'scripts/apidocs-docs-scan.ts', site], { cwd, encoding: 'utf8', shell: true, timeout: 150_000 });
   const text = `${result.stdout || ''}${result.stderr || ''}`.trim();
   if (!text) return 0;
