@@ -1,0 +1,52 @@
+// PostToolUse hook for Bash and PowerShell. When the command that just ran was `apidocs build <site>` or
+// the read-only tour, run the review gate and hand its summary back as context, so the verdict is in
+// front of the agent without a separate step. It never blocks (the tool already ran).
+// Design: docs/design/agent-guidance.md §3, §4.
+
+import { spawnSync } from 'node:child_process';
+import path from 'node:path';
+import { finalCwd } from './shell.mjs';
+
+const root = process.env.CLAUDE_PROJECT_DIR || process.cwd();
+
+export function siteOf(command) {
+  const cmd = String(command || '');
+  const build = /apidocs(?:-cli(?:\.ts)?)?\s+(?:--\s+)?build\s+(\S+)/.exec(cmd);
+  const tour = /apidocs-readonly-tour(?:\.ts)?\s+(\S+)/.exec(cmd) ?? /apidocs:tour\s+(?:--\s+)?(\S+)/.exec(cmd);
+  const word = build?.[1] ?? tour?.[1];
+  // A site id is one word: a path, a source file, a placeholder or a shell token after the command is not a site
+  // (`wc -l scripts/... src/x.ts`, `... | head`, `build <site>` quoted in a doc).
+  return word !== undefined && /^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(word) ? word : null;
+}
+
+async function main() {
+  let raw = '';
+  for await (const chunk of process.stdin) raw += chunk;
+  let input;
+  try {
+    input = JSON.parse(raw);
+  } catch {
+    return 0;
+  }
+  if (!/^(Bash|PowerShell)$/.test(input.tool_name || '')) return 0;
+  const site = siteOf(input.tool_input?.command);
+  if (!site || site.endsWith('.json')) return 0;
+  // The scan runs where the build ran: a `cd <worktree> && ...` prefix moves it there.
+  const cwd = finalCwd(input.tool_input?.command, typeof input.cwd === 'string' && input.cwd ? input.cwd : root);
+  const result = spawnSync('npx', ['tsx', 'scripts/apidocs-docs-scan.ts', site], { cwd, encoding: 'utf8', shell: true, timeout: 150_000 });
+  const text = `${result.stdout || ''}${result.stderr || ''}`.trim();
+  if (!text) return 0;
+  process.stdout.write(
+    JSON.stringify({
+      hookSpecificOutput: {
+        hookEventName: 'PostToolUse',
+        additionalContext: `Review gate ran after this command (exit ${result.status}). Commit nothing under docs/apis/${site} unless the verdict is pass.\n${text}`,
+      },
+    }),
+  );
+  return 0;
+}
+
+if (process.argv[1] && path.basename(process.argv[1]) === 'after-build.mjs') {
+  main().then((code) => process.exit(code));
+}
