@@ -4,7 +4,7 @@
 // Design: docs/design/api-docs.md §7, §9.
 
 import { CaptureError } from './errors.js';
-import { settleCapMs } from './limits.js';
+import { cdpConnectTimeoutMs } from './limits.js';
 import type { SessionId } from './types.js';
 
 export interface CdpEvent {
@@ -23,11 +23,8 @@ export interface CdpConnectOptions {
   connectTimeoutMs?: number;
 }
 
-/**
- * limits.ts names no connect timeout, so the default borrows the settle cap (the longest wait the
- * recorder already allows itself). Applies to the /json/version request and to the socket open.
- */
-const defaultConnectTimeoutMs = settleCapMs;
+/** Applies to the /json/version request and to the socket open. */
+const defaultConnectTimeoutMs = cdpConnectTimeoutMs;
 
 interface Pending {
   method: string;

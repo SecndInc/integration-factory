@@ -23,3 +23,6 @@ Thumbs.db
 
 # Claude Code agent worktrees
 .claude/worktrees/
+
+# Private job data: raw traces hold cookies and tokens; browser profiles hold logins
+jobs/

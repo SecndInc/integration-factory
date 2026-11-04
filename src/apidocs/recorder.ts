@@ -21,7 +21,7 @@ import path from 'node:path';
 import { Cdp, type CdpEvent } from './cdp.js';
 import { CaptureError } from './errors.js';
 import { bodyMaxBytes, networkResourceBufferBytes, networkTotalBufferBytes, settleCapMs, settleQuietMs } from './limits.js';
-import { bodyTypes } from './trace.js';
+import { bodyTypes, inScope as hostInScope } from './trace.js';
 import type {
   Cookie,
   Counts,
@@ -960,14 +960,6 @@ function parseUrl(url: string): URL | undefined {
 }
 
 /** Suffix match on the host, the rule filterHost uses in playwright-capture.ts (and trace.ts inScope). */
-function hostInScope(hostname: string, hosts: readonly string[]): boolean {
-  if (!hostname) return false;
-  const host = hostname.toLowerCase();
-  return hosts.some((entry) => {
-    const allowed = entry.toLowerCase().replace(/^www\./, '');
-    return host === allowed || host.endsWith(`.${allowed}`);
-  });
-}
 
 function headerValue(headers: Record<string, string>, name: string): string | undefined {
   for (const [key, value] of Object.entries(headers)) if (key.toLowerCase() === name) return value;
