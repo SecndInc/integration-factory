@@ -5,6 +5,7 @@
 // status, bindings, evidence); Background traffic (ambient); Seen outside any step.
 // Reference, not tutorial: no prose the data cannot back. Pure. Design: docs/design/api-docs.md §6.
 
+import { bindingsMaxRows, observedInMaxRows } from '../limits.js';
 import type { Redacted } from '../redact.js';
 import type { ApiDoc, BodyDoc, Endpoint, Evidence, WorkflowDoc } from '../types.js';
 import { bindingsOut, endpointTitle, firstSegment, plural, prettyValue, requiredText, sortedEndpoints, stableJson, statusByExchange } from './shared.js';
@@ -31,8 +32,9 @@ export function toHtml(doc: Redacted<ApiDoc>): string {
     wfNames: new Map(doc.workflows.map((wf) => [wf.id, wf.name])),
   };
   const api = endpoints.filter((ep) => ep.kind === 'api');
-  const foreground = api.filter((ep) => !ep.ambient);
-  const ambient = api.filter((ep) => ep.ambient);
+  const noise = api.filter((ep) => ep.noise);
+  const foreground = api.filter((ep) => !ep.ambient && !ep.noise);
+  const ambient = api.filter((ep) => ep.ambient && !ep.noise);
   const headline = `${plural(doc.workflows.length, 'workflow')}, ${plural(api.length, 'endpoint')}, ${plural(doc.coverage.bindings, 'binding')}`;
 
   return [
@@ -56,7 +58,11 @@ export function toHtml(doc: Redacted<ApiDoc>): string {
     endpointGroups(ctx, foreground),
     '</section>',
     ambient.length > 0 ? `<section id="background"><h2>Background traffic (${ambient.length})</h2>${endpointGroups(ctx, ambient)}</section>` : '',
+    noise.length > 0
+      ? `<section id="noise"><h2>Assets, locale bundles and trackers (${noise.length})</h2><p>Requests the app makes for itself, not an API: listed so the count is accounted for, bodies not documented.</p><ul>${noise.map((ep) => `<li><code>${e(`${ep.method} ${ep.pathTemplate}`)}</code></li>`).join('')}</ul></section>`
+      : '',
     outsideSection(ctx),
+    codeSection(ctx),
     '</main>',
     '</body>',
     '</html>',
@@ -190,6 +196,8 @@ function authSection(ctx: Ctx): string {
     '<dl class="kv">',
     `<dt>Cookies</dt><dd>${list(auth.cookies)}</dd>`,
     `<dt>Headers</dt><dd>${list(auth.headers)}</dd>`,
+    `<dt>Context headers</dt><dd>${list(auth.contextHeaders)} <span class="muted">constant on most requests; not credentials, but required</span></dd>`,
+    auth.trackerCookies.length === 0 ? '' : `<dt>Also sent, not needed</dt><dd>${list(auth.trackerCookies)} <span class="muted">analytics and chat SDKs</span></dd>`,
     `<dt>Established by</dt><dd>${loginLink}</dd>`,
     `<dt>Verification</dt><dd>${auth.verification === undefined ? '<span class="muted">not declared</span>' : e(auth.verification)}</dd>`,
     '</dl>',
@@ -285,9 +293,9 @@ function endpointArticle(ctx: Ctx, ep: Endpoint): string {
           .map((h) => `<tr><td><code>${e(h.name)}</code></td><td>${e(h.valueKind)}</td><td>${requiredText(h.required)}</td></tr>`)
           .join('')}</tbody></table></div>`;
   const authLine =
-    ep.auth.cookies.length + ep.auth.headers.length === 0
+    ep.auth.cookies.length + ep.auth.headers.length + ep.auth.contextHeaders.length === 0
       ? ''
-      : `<p class="meta">Auth: ${[...ep.auth.cookies.map((c) => `cookie <code>${e(c)}</code>`), ...ep.auth.headers.map((h) => `header <code>${e(h)}</code>`)].join(', ')}</p>`;
+      : `<p class="meta">Auth: ${[...ep.auth.cookies.map((c) => `cookie <code>${e(c)}</code>`), ...ep.auth.headers.map((h) => `header <code>${e(h)}</code>`), ...ep.auth.contextHeaders.map((h) => `context header <code>${e(h)}</code>`)].join(', ')}</p>`;
   const request = ep.request === null ? '' : `<h5>Request</h5>${bodyBlock(ep.request)}`;
   const responses = Object.keys(ep.responses)
     .sort()
@@ -307,12 +315,19 @@ function endpointArticle(ctx: Ctx, ep: Endpoint): string {
     const link = target === undefined ? e(text) : `<a href="#${target}">${e(text)}</a>`;
     return `<li><code>${e(binding.from.location)} ${e(binding.from.path)}</code> feeds ${link} <code>${e(binding.to.location)} ${e(binding.to.path)}</code></li>`;
   });
-  const bindings = incoming.length + outgoing.length === 0 ? '' : `<h5>Bindings</h5><ul>${[...incoming, ...outgoing].join('')}</ul>`;
+  const allBindings = [...incoming, ...outgoing];
+  const bindings =
+    allBindings.length === 0
+      ? ''
+      : `<h5>Bindings (${allBindings.length})</h5><ul>${allBindings.slice(0, bindingsMaxRows).join('')}${allBindings.length > bindingsMaxRows ? `<li>and ${allBindings.length - bindingsMaxRows} more</li>` : ''}</ul>`;
 
   const evidence =
     ep.observedIn.length === 0
       ? ''
-      : `<details><summary>Observed ${ep.observedIn.length} ${ep.observedIn.length === 1 ? 'time' : 'times'}</summary><ul>${ep.observedIn.map((ev) => `<li>${evidenceItem(ctx, ev)}</li>`).join('')}</ul></details>`;
+      : `<details><summary>Observed ${ep.observedIn.length} ${ep.observedIn.length === 1 ? 'time' : 'times'}</summary><ul>${ep.observedIn
+          .slice(0, observedInMaxRows)
+          .map((ev) => `<li>${evidenceItem(ctx, ev)}</li>`)
+          .join('')}${ep.observedIn.length > observedInMaxRows ? `<li>and ${ep.observedIn.length - observedInMaxRows} more</li>` : ''}</ul></details>`;
 
   return [
     `<article class="ep" id="${anchor}">`,
@@ -348,6 +363,22 @@ function outsideSection(ctx: Ctx): string {
   const { outside } = ctx.doc;
   if (outside.length === 0) return '';
   return `<section id="outside"><h2>Seen outside any step (${outside.length})</h2><ul>${outside.map((ev) => `<li>${evidenceItem(ctx, ev)}</li>`).join('')}</ul></section>`;
+}
+
+function codeSection(ctx: Ctx): string {
+  const { code } = ctx.doc;
+  if (code === undefined) return '';
+  const unseen = code.routes.filter((r) => !r.observed);
+  const seen = code.routes.length - unseen.length;
+  const rows = unseen.map((r) => `<tr><td><code>${e(r.path)}</code></td><td>${r.methods.length === 0 ? '<span class="muted">unknown</span>' : e(r.methods.join(', '))}</td></tr>`).join('');
+  const enums = code.enums.map((en) => `<tr><td><code>${e(en.name)}</code></td><td>${en.values.map((v) => `<code>${e(v)}</code>`).join(' ')}</td></tr>`).join('');
+  return [
+    `<section id="code"><h2>Routes in code, not observed (${unseen.length})</h2>`,
+    `<p class="meta">Read from ${e(plural(code.bundles.fetched, 'script bundle'))} the app loads (${code.bundles.failed} failed to fetch). ${seen} of ${code.routes.length} routes in code were also observed and are documented above. The rest were never called while recording: no schema, no example; the method is the call site's when it showed one.</p>`,
+    unseen.length === 0 ? '' : `<div class="scroll"><table><thead><tr><th>Path</th><th>Methods</th></tr></thead><tbody>${rows}</tbody></table></div>`,
+    code.enums.length === 0 ? '' : `<h3>Enums in code (${code.enums.length})</h3><div class="scroll"><table><thead><tr><th>Name</th><th>Values</th></tr></thead><tbody>${enums}</tbody></table></div>`,
+    '</section>',
+  ].join('\n');
 }
 
 // ---- small helpers ---------------------------------------------------------------------------

@@ -8,13 +8,16 @@ disable-model-invocation: true
 
 Outcome: `docs/apis/<site>/` rendered, `REVIEW.json` says `pass`, and a PR from a feature branch carries the evidence. The gate exists because a page can be free of tokens and still full of customer records; the Roofr run proved it.
 
-## 1. Build
+## 1. Mine, then build
 
 ```
+npm run apidocs -- mine <site>
 npm run apidocs -- build <site>
 ```
 
-Folds every trace under `jobs/<site>/traces` with every workflow under `workflows/<site>` and writes README.md, api.json, index.html, openapi.json atomically. A warning about a non-completed run means that trace is listed on the page but not used for derive. The PostToolUse hook runs the review gate right after and hands you its summary.
+`mine` downloads the app's own script bundles named in the latest trace (no cookies, no API calls) into `jobs/<site>/bundles/` and writes `jobs/<site>/mined.json`: the API paths the code holds (write routes the tour never calls), the method where the call site shows it, and the enums. Its one line of output, `mined: bundles N fetched, F failed, routes R (M with method), enums E`, is the number to compare between runs; exit 2 means every fetch failed and build goes on without it. `build` picks `mined.json` up when present and adds "Routes in code, not observed" and "Enums in code" to the README and HTML; `openapi.json` stays observed-only.
+
+`build` folds every trace under `jobs/<site>/traces` with every workflow under `workflows/<site>` and writes README.md, api.json, index.html, openapi.json atomically. A warning about a non-completed run means that trace is listed on the page but not used for derive. The PostToolUse hook runs the review gate right after and hands you its summary.
 
 ## 2. Check the rendering
 
@@ -47,7 +50,7 @@ npm run apidocs:scan -- <site>
 
 `--accept` is a person's decision; an agent reports `needs-review` and stops. `guard-bash.mjs` refuses `git add docs/apis/<site>` on any other verdict, or when the files changed after the scan.
 
-The noise list (locale bundles, tracker proxies, Cloudflare challenges) is information for the PR, not a blocker: say how many endpoints are noise and leave them in until derive learns to classify them.
+The noise list (locale bundles, tracker proxies, Cloudflare challenges) is information for the PR, not a blocker: derive marks them `noise`, the docs list them by path without bodies, and the count is `coverage.noise`.
 
 ## 4. Land
 

@@ -143,6 +143,7 @@ Three outputs from one `ApiDoc`, written to `docs/apis/<site>/`:
   3. **Workflows.** One block per workflow: goal, preconditions, declared inputs, latest run outcome and date, then each step as a row with the step text, its outcome and the exchanges it triggered as `METHOD path → status`. A sequence diagram drawn in inline SVG from `sequence[]`. A `network` step with zero exchanges is flagged.
   4. **Endpoints.** Grouped by first path segment. Each endpoint: method, path template, params table with each param's source, request schema and example, one response per status code, bindings in and out, and the evidence list (workflow, step, time, exchange id).
   5. **Background traffic.** Ambient endpoints, so polling does not clutter the workflows.
+  6. **Assets, locale bundles and trackers.** `noise` endpoints (`noisePathPattern`), method and path only. Example arrays are cut to `exampleArrayMaxItems`; observations and bindings per endpoint to `observedInMaxRows` and `bindingsMaxRows`, so a README stays under the scan's size limit.
   6. **Seen outside any step.** Exchanges with no step, so nothing captured is hidden.
 - `README.md`, the Markdown form of the same sections, for the PR and for agents.
 
@@ -186,10 +187,12 @@ src/apidocs/
   har.ts                toHar: steps as pages, exchanges as entries with _step/_initiator ~80
   drivers/human.ts      Enter per step over Recorder.step                                 ~60
   drivers/navigator.ts  (phase 4) begin/end from SurfaceNavigator.onPhaseChange           ~50
-  derive.ts             template, kinds, schema, scrub, auth, bindings, inputs, cases, coverage
+  derive.ts             template, kinds, schema, scrub, auth, bindings, inputs, cases, coverage, mined code
+  noise.ts              tracker cookie prefixes and the noise path pattern (derive, scan)
+  mine.ts               API paths, methods and enums out of bundle text (apidocs mine)
   redact.ts             Redacted<T> brand and redact()
   render/markdown.ts, openapi.ts, html.ts
-src/apidocs-cli.ts      record | inspect | har | build                                     ~130
+src/apidocs-cli.ts      record | inspect | har | mine | build                              ~130
 src/capture/browser-provider.ts   + AttachedBrowserProvider (~15), + Browserbase advancedStealth field
 src/capture/path-template.ts      isIdSegment, moved out of playwright-capture.ts
 workflows/<site>/       workflow specs, committed

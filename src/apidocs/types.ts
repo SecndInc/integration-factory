@@ -480,11 +480,13 @@ export const EndpointSchema = z.object({
   pathParams: z.array(ParamSchema),
   queryParams: z.array(ParamSchema),
   headers: z.array(HeaderUseSchema),
-  auth: z.object({ cookies: z.array(z.string()), headers: z.array(z.string()) }),
+  auth: z.object({ cookies: z.array(z.string()), headers: z.array(z.string()), contextHeaders: z.array(z.string()).default([]) }),
   request: BodyDocSchema.nullable(),
   responses: z.record(z.string(), BodyDocSchema),
   bindings: z.array(BindingSchema),
   ambient: z.boolean(),
+  /** An asset, locale bundle, challenge or tracker proxy: listed by path, bodies not documented. */
+  noise: z.boolean().default(false),
   cors: z.boolean(),
   observedIn: z.array(EvidenceSchema),
 });
@@ -543,8 +545,36 @@ export const CoverageSchema = z.object({
   computedValues: z.number().int(),
   bodiesEvicted: z.number().int(),
   betweenSteps: z.number().int(),
+  /** Endpoints listed as noise (assets, locale bundles, trackers), bodies left out. */
+  noise: z.number().int().default(0),
 });
 export type Coverage = z.infer<typeof CoverageSchema>;
+
+// ---- Mined code (apidocs mine) --------------------------------------------------------------
+
+export const httpMethods = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'] as const;
+export type HttpMethod = (typeof httpMethods)[number];
+
+/** `jobs/<site>/mined.json`: what src/apidocs/mine.ts extracted from the bundles `apidocs mine` fetched. */
+export const MinedCodeSchema = z.object({
+  minedVersion: z.literal(1),
+  site: z.string(),
+  minedAt: z.string(),
+  /** API path templates found as string literals; `methods` is empty when no call site showed one. */
+  routes: z.array(z.object({ path: z.string(), methods: z.array(z.enum(httpMethods)) })),
+  /** Object literals whose keys are UPPER_SNAKE and whose values are lowercase strings. */
+  enums: z.array(z.object({ name: z.string(), values: z.array(z.string()) })),
+  bundles: z.object({ fetched: z.number().int(), failed: z.number().int() }),
+});
+export type MinedCode = z.infer<typeof MinedCodeSchema>;
+
+/** The doc's view of the same: each route says whether a trace also observed it. */
+export const CodeDocSchema = z.object({
+  routes: z.array(z.object({ path: z.string(), methods: z.array(z.enum(httpMethods)), observed: z.boolean() })),
+  enums: z.array(z.object({ name: z.string(), values: z.array(z.string()) })),
+  bundles: z.object({ fetched: z.number().int(), failed: z.number().int() }),
+});
+export type CodeDoc = z.infer<typeof CodeDocSchema>;
 
 export const ApiDocSchema = z.object({
   docVersion: z.literal(1),
@@ -570,6 +600,10 @@ export const ApiDocSchema = z.object({
   auth: z.object({
     cookies: z.array(z.string()),
     headers: z.array(z.string()),
+    /** Custom headers sent with one constant value on most API requests (a tenant id, `x-requested-with`): not secrets, but omitted means 403. */
+    contextHeaders: z.array(z.string()).default([]),
+    /** Cookies sent on most requests that belong to analytics and chat SDKs, not the app; listed so a reader knows they are not needed. */
+    trackerCookies: z.array(z.string()).default([]),
     loginWorkflowId: z.string().transform((s) => s as WorkflowId).optional(),
     verification: z.enum(['password', 'code', 'passkey', 'sso']).optional(),
   }),
@@ -577,6 +611,8 @@ export const ApiDocSchema = z.object({
   endpoints: z.array(EndpointSchema),
   outside: z.array(EvidenceSchema),
   coverage: CoverageSchema,
+  /** What `apidocs mine` read out of the app's own JavaScript, when it ran. Routes carry `observed` when a trace also saw them. */
+  code: CodeDocSchema.optional(),
 });
 export type ApiDoc = z.infer<typeof ApiDocSchema>;
 

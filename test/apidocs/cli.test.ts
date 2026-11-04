@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { promises as fs } from 'node:fs';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { PassThrough, Writable } from 'node:stream';
@@ -7,7 +9,8 @@ import test from 'node:test';
 import { cliDeps, main, parseArgs } from '../../src/apidocs-cli.js';
 import { recordWithHumanDriver, siteIdOf, type RecorderLike } from '../../src/apidocs/drivers/human.js';
 import { CaptureError } from '../../src/apidocs/errors.js';
-import { WorkflowSchema, type Counts, type RunId, type StepId, type Trace } from '../../src/apidocs/types.js';
+import { bundleMaxBytes } from '../../src/apidocs/limits.js';
+import { MinedCodeSchema, WorkflowSchema, type Counts, type RunId, type StepId, type Trace } from '../../src/apidocs/types.js';
 import { resolveTarget } from '../../src/target.js';
 
 // ---- helpers
@@ -623,6 +626,251 @@ test('build warns about a non-completed latest run, passes redact keys, writes f
     assert.match(cap.text(), /YAML workflows are not read/);
     assert.match(cap.text(), /coverage: steps with exchanges 1\/1/);
     assert.deepEqual((await fs.readdir(outDir)).sort(), ['README.md', 'api.json', 'index.html', 'openapi.json']);
+  } finally {
+    cap.restore();
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
+
+// ---- mine
+
+/** fakeTrace() plus Script loads for the given URLs (the trace's XHR and CDN exchanges stay). */
+function scriptTrace(urls: string[]): Trace {
+  const base = fakeTrace();
+  const scripts = urls.map((url, i) => {
+    const parsed = new URL(url);
+    return {
+      ...base.exchanges[1]!,
+      id: `s:${10 + i}:0`,
+      seq: 10 + i,
+      resourceType: 'Script',
+      request: { ...base.exchanges[1]!.request, url, host: parsed.host, path: parsed.pathname },
+    };
+  });
+  return { ...base, exchanges: [...base.exchanges, ...scripts] } as unknown as Trace;
+}
+
+const bundleUrls = {
+  main: 'https://demo.example.com/build/main-abc.js',
+  chunk: 'https://demo.example.com/build/chunk-1.js',
+  broken: 'https://demo.example.com/build/broken.js',
+  large: 'https://demo.example.com/build/large.js',
+  cdn: 'https://cdn.other.com/vendor.js',
+};
+
+const bundleText: Record<string, string> = {
+  [bundleUrls.main]: 'const S = { OPEN: "open", CLOSED: "closed" }; fetch("/api/items"); import("/build/chunk-1.js");',
+  [bundleUrls.chunk]: 'axios.post("/api/items"); fetch(`/api/items/${id}`, { method: "DELETE" });',
+};
+
+function fetchStub(): { calls: Record<string, number>; fetchText: typeof cliDeps.fetchText } {
+  const calls: Record<string, number> = {};
+  return {
+    calls,
+    async fetchText(url, signal) {
+      assert.ok(signal instanceof AbortSignal);
+      calls[url] = (calls[url] ?? 0) + 1;
+      if (url === bundleUrls.broken) throw new Error('ECONNRESET');
+      if (url === bundleUrls.large) return { status: 200, text: '', bytes: Number.MAX_SAFE_INTEGER };
+      const text = bundleText[url];
+      if (text === undefined) return { status: 404, text: '', bytes: 0 };
+      return { status: 200, text, bytes: text.length };
+    },
+  };
+}
+
+const mineMetric = /^mined: bundles 2 fetched, 2 failed, routes 2 \(2 with method\), enums 1$/m;
+
+test('mine: fetches target-host scripts, follows chunk refs, records the manifest, writes mined.json; a rerun reads from disk', async () => {
+  const dir = await tempDir();
+  const targetFile = path.join(dir, 'demo.json');
+  await fs.writeFile(targetFile, JSON.stringify({ name: 'demo', startUrl: 'https://demo.example.com/' }));
+  const stub = fetchStub();
+  const deps = {
+    listTraces: async () => [path.join(dir, 'trace-1.jsonl')],
+    readTrace: async () => ({ lines: [], truncatedTail: false }),
+    assemble: () => scriptTrace([bundleUrls.main, bundleUrls.broken, bundleUrls.large, bundleUrls.cdn, bundleUrls.main]),
+    fetchText: stub.fetchText,
+  };
+  const cap = capture();
+  try {
+    const code = await withDeps(deps, () => main(['mine', targetFile, '--jobs', dir]));
+    assert.equal(code, 0, cap.text());
+    assert.match(cap.text(), mineMetric);
+    const minedFile = path.join(dir, 'demo', 'mined.json');
+    assert.ok(cap.text().includes(`wrote ${minedFile}`), cap.text());
+    assert.deepEqual(stub.calls, { [bundleUrls.main]: 1, [bundleUrls.chunk]: 1, [bundleUrls.broken]: 2, [bundleUrls.large]: 1 });
+
+    const mined = MinedCodeSchema.parse(JSON.parse(await fs.readFile(minedFile, 'utf8')));
+    assert.equal(mined.site, 'demo');
+    assert.deepEqual(mined.routes, [
+      { path: '/api/items', methods: ['GET', 'POST'] },
+      { path: '/api/items/{id}', methods: ['DELETE'] },
+    ]);
+    assert.deepEqual(mined.enums, [{ name: 'S', values: ['open', 'closed'] }]);
+    assert.deepEqual(mined.bundles, { fetched: 2, failed: 2 });
+
+    type Entry = { sha256?: string; bytes?: number; file?: string; fetchedAt?: string; failed?: string; at?: string };
+    const manifestFile = path.join(dir, 'demo', 'bundles', 'manifest.json');
+    const manifest = JSON.parse(await fs.readFile(manifestFile, 'utf8')) as { manifestVersion: number; site: string; entries: Record<string, Entry> };
+    assert.equal(manifest.manifestVersion, 1);
+    assert.equal(manifest.site, 'demo');
+    assert.deepEqual(Object.keys(manifest.entries).sort(), [bundleUrls.broken, bundleUrls.chunk, bundleUrls.large, bundleUrls.main].sort());
+    const mainEntry = manifest.entries[bundleUrls.main]!;
+    assert.equal(mainEntry.sha256?.length, 64);
+    assert.equal(mainEntry.file, `${mainEntry.sha256!.slice(0, 16)}.js`);
+    assert.equal(mainEntry.bytes, bundleText[bundleUrls.main]!.length);
+    assert.ok(mainEntry.fetchedAt);
+    assert.equal(await fs.readFile(path.join(dir, 'demo', 'bundles', mainEntry.file!), 'utf8'), bundleText[bundleUrls.main]);
+    assert.match(manifest.entries[bundleUrls.broken]!.failed!, /^network: ECONNRESET/);
+    assert.equal(manifest.entries[bundleUrls.large]!.failed, 'too-large');
+    await assert.rejects(fs.stat(`${manifestFile}.tmp`));
+
+    // Second run: fetched bundles come from disk; each failed one is attempted once more.
+    const again = fetchStub();
+    const cap2 = capture();
+    try {
+      assert.equal(await withDeps({ ...deps, fetchText: again.fetchText }, () => main(['mine', targetFile, '--jobs', dir])), 0);
+      assert.match(cap2.text(), mineMetric);
+    } finally {
+      cap2.restore();
+    }
+    assert.deepEqual(again.calls, { [bundleUrls.broken]: 1, [bundleUrls.large]: 1 });
+  } finally {
+    cap.restore();
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('mine: exits 2 with the counts and no mined.json when every fetch fails; exits 3 without a trace', async () => {
+  const dir = await tempDir();
+  const targetFile = path.join(dir, 'demo.json');
+  await fs.writeFile(targetFile, JSON.stringify({ name: 'demo', startUrl: 'https://demo.example.com/' }));
+  const cap = capture();
+  try {
+    const code = await withDeps(
+      {
+        listTraces: async () => [path.join(dir, 'trace-1.jsonl')],
+        readTrace: async () => ({ lines: [], truncatedTail: false }),
+        assemble: () => scriptTrace([bundleUrls.broken]),
+        fetchText: fetchStub().fetchText,
+      },
+      () => main(['mine', targetFile, '--jobs', dir]),
+    );
+    assert.equal(code, 2, cap.text());
+    assert.match(cap.text(), /mined: bundles 0 fetched, 1 failed, routes 0 \(0 with method\), enums 0/);
+    assert.match(cap.text(), /without cookies/);
+    await assert.rejects(fs.stat(path.join(dir, 'demo', 'mined.json')));
+    await fs.stat(path.join(dir, 'demo', 'bundles', 'manifest.json'));
+
+    assert.equal(await withDeps({ listTraces: async () => [] }, () => main(['mine', targetFile, '--jobs', dir])), 3);
+    assert.match(cap.text(), /no traces for demo/);
+  } finally {
+    cap.restore();
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('mine: the real fetchText sends no cookie or authorization header, follows redirects, and stops at bundleMaxBytes', async () => {
+  const seen: Record<string, string | undefined>[] = [];
+  const server = createServer((req, res) => {
+    seen.push({ url: req.url, cookie: req.headers.cookie, authorization: req.headers.authorization });
+    if (req.url === '/moved.js') {
+      res.writeHead(302, { location: '/main.js' });
+      res.end();
+    } else if (req.url === '/main.js') {
+      res.writeHead(200, { 'content-type': 'application/javascript', 'set-cookie': 'sid=1; Path=/' });
+      res.end('fetch("/api/ping")');
+    } else if (req.url === '/large.js') {
+      res.writeHead(200, { 'content-type': 'application/javascript', 'content-length': String(bundleMaxBytes + 1) });
+      res.end(Buffer.alloc(bundleMaxBytes + 1));
+    } else {
+      res.writeHead(404);
+      res.end();
+    }
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const port = (server.address() as AddressInfo).port;
+  const origin = `http://127.0.0.1:${port}`;
+  try {
+    const ok = await cliDeps.fetchText(`${origin}/moved.js`, new AbortController().signal);
+    assert.deepEqual(ok, { status: 200, text: 'fetch("/api/ping")', bytes: 18 });
+    const again = await cliDeps.fetchText(`${origin}/main.js`, new AbortController().signal);
+    assert.equal(again.status, 200);
+    const large = await cliDeps.fetchText(`${origin}/large.js`, new AbortController().signal);
+    assert.equal(large.text, '');
+    assert.ok(large.bytes > bundleMaxBytes);
+    const missing = await cliDeps.fetchText(`${origin}/nope.js`, new AbortController().signal);
+    assert.equal(missing.status, 404);
+    assert.ok(seen.length >= 4);
+    for (const request of seen) {
+      assert.equal(request.cookie, undefined, `cookie sent on ${request.url}`);
+      assert.equal(request.authorization, undefined, `authorization sent on ${request.url}`);
+    }
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
+// ---- build with mined.json
+
+test('build picks up jobs/<site>/mined.json: derive marks observed routes, the code line is printed, a malformed file is a warning', async () => {
+  const dir = await tempDir();
+  const workflowsDir = path.join(dir, 'workflows');
+  const outDir = path.join(dir, 'out');
+  await fs.mkdir(workflowsDir);
+  await fs.writeFile(path.join(workflowsDir, 'flow.json'), JSON.stringify({ workflowVersion: 1, id: 'demo-flow', name: 'F', goal: 'g', effect: 'read', steps: [{ id: 'one', do: 'x' }] }));
+  const targetFile = path.join(dir, 'demo.json');
+  await fs.writeFile(targetFile, JSON.stringify({ name: 'demo', startUrl: 'https://demo.example.com/' }));
+  const minedFile = path.join(dir, 'demo', 'mined.json');
+  await fs.mkdir(path.dirname(minedFile), { recursive: true });
+  await fs.writeFile(
+    minedFile,
+    JSON.stringify({
+      minedVersion: 1,
+      site: 'demo',
+      minedAt: '2026-11-03T00:00:00.000Z',
+      routes: [
+        { path: '/api/items', methods: ['GET', 'POST'] },
+        { path: '/api/other/{id}', methods: [] },
+      ],
+      enums: [{ name: 'S', values: ['open', 'closed'] }],
+      bundles: { fetched: 2, failed: 1 },
+    }),
+  );
+  type SeenDoc = { code?: { routes: { path: string; methods: string[]; observed: boolean }[]; enums: unknown[]; bundles: unknown } };
+  const seen: { doc?: SeenDoc } = {};
+  const deps = {
+    listTraces: async () => [path.join(dir, 'a.jsonl')],
+    readTrace: async () => ({ lines: [], truncatedTail: false }),
+    assemble: () => ({ ...fakeTrace(), workflowId: 'demo-flow', endedAt: '2026-11-03T00:00:02.000Z' }) as unknown as Trace,
+    renderApiDoc: ((input: SeenDoc) => {
+      seen.doc = input;
+      return { 'api.json': '{}\n', 'openapi.json': '{}\n', 'index.html': '<html>', 'README.md': '# x\n' };
+    }) as never,
+  };
+  const cap = capture();
+  try {
+    assert.equal(await withDeps(deps, () => main(['build', targetFile, '--workflows', workflowsDir, '--jobs', dir, '--out', outDir])), 0, cap.text());
+    assert.match(cap.text(), /^code: routes 2, enums 1 from mined\.json$/m);
+    assert.ok(seen.doc?.code, 'derive received the mined code');
+    assert.deepEqual(seen.doc!.code!.routes, [
+      { path: '/api/items', methods: ['GET', 'POST'], observed: true },
+      { path: '/api/other/{id}', methods: [], observed: false },
+    ]);
+    assert.deepEqual(seen.doc!.code!.enums, [{ name: 'S', values: ['open', 'closed'] }]);
+    assert.deepEqual(seen.doc!.code!.bundles, { fetched: 2, failed: 1 });
+
+    await fs.writeFile(minedFile, JSON.stringify({ minedVersion: 2 }));
+    const rendered = (): SeenDoc | undefined => seen.doc;
+    delete seen.doc;
+    const before = cap.text().length;
+    assert.equal(await withDeps(deps, () => main(['build', targetFile, '--workflows', workflowsDir, '--jobs', dir, '--out', outDir])), 0);
+    const second = cap.text().slice(before);
+    assert.match(second, /warning: .*mined\.json is not a mined\.json this build understands/);
+    assert.doesNotMatch(second, /^code: routes/m);
+    assert.ok(rendered(), 'the build still renders without code routes');
+    assert.equal(rendered()?.code, undefined);
   } finally {
     cap.restore();
     await fs.rm(dir, { recursive: true, force: true });

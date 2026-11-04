@@ -17,6 +17,7 @@ import { createReadStream, promises as fs } from 'node:fs';
 import path from 'node:path';
 import { createInterface } from 'node:readline';
 import { pathToFileURL } from 'node:url';
+import { noisePathPattern } from '../src/apidocs/noise.js';
 
 export const docFiles = ['README.md', 'api.json', 'index.html', 'openapi.json'] as const;
 export const readmeMaxBytes = 1024 * 1024;
@@ -35,7 +36,6 @@ const piiKeyPattern =
   /^(first_?name|last_?name|full_?name|display_?name|phone|phone_?number|mobile|cell|email|e_?mail|address|address_?line_?\d?|street|formatted_?address|short_?address|lat|lng|latitude|longitude|ssn|sin|dob|date_?of_?birth|birth_?date|iban|card_?number|account_?number|license_?plate)$/i;
 /** `name` alone is a product or a team as often as a person; it counts only under one of these parents. */
 const personParentPattern = /(customer|contact|user|owner|assignee|person|member|lead|homeowner|client|employee|recipient|signer|payer|author|creator)/i;
-const noisePathPattern = /^\/(locales|cdn-cgi|broadcasting|sanctum|_next|static|assets)\/|\/ag\/g\/c$|\/ccm\/form-data\/|\.(json|js|css|map|png|jpe?g|gif|svg|ico|woff2?|ttf)$/i;
 
 export interface ScanResult {
   site: string;

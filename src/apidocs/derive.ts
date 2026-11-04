@@ -20,16 +20,20 @@ import {
   bindingMinStringLength,
   computedMinEntropy,
   computedMinLength,
+  contextHeaderValuesMax,
+  exampleArrayMaxItems,
   exampleTextMaxBytes,
   schemaDepthMax,
   schemaKeysPerObjectMax,
 } from './limits.js';
+import { isNoisePath, isTrackerCookie } from './noise.js';
 import { isSensitiveName, looksLikeSecret, REDACTED, redact, type Redacted, type RedactionPolicy } from './redact.js';
 import type {
   ApiDoc,
   Binding,
   Body,
   BodyDoc,
+  CodeDoc,
   Coverage,
   Endpoint,
   EndpointId,
@@ -39,6 +43,7 @@ import type {
   Headers as HeaderList,
   HeaderUse,
   JsonSchema,
+  MinedCode,
   Param,
   ParamSource,
   RunId,
@@ -56,6 +61,8 @@ export interface DeriveInput {
   /** Assembled traces with their file paths, any outcome. */
   traces: readonly { path: string; trace: Trace }[];
   redaction: RedactionPolicy;
+  /** `jobs/<site>/mined.json` when `apidocs mine` ran; routes it lists are marked observed when a trace saw them. */
+  code?: MinedCode;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -164,12 +171,23 @@ export function shapeToJsonSchema(examples: readonly unknown[]): JsonSchema {
 /** More dynamic-looking keys (ids) than this makes an object a map. */
 const dynamicKeyCap = 3;
 
+/** A property name a programmer wrote: letters, digits, `_` or `-`, starting with a letter, short. Never data. */
+const wordLikeKey = /^[A-Za-z][A-Za-z0-9_-]{0,39}$/;
+
 /** True when property names carry data (emails, tokens, many ids): the object is a map, not a record. */
 function hasDynamicKeys(keys: readonly string[]): boolean {
-  return keys.some((k) => looksLikeSecret(k)) || keys.filter((k) => isIdSegment(k)).length > dynamicKeyCap;
+  const dataLike = keys.filter((k) => !wordLikeKey.test(k));
+  return dataLike.some((k) => looksLikeSecret(k)) || dataLike.filter((k) => isIdSegment(k)).length > dynamicKeyCap;
 }
 
 /** Replaces the keys of map-like objects with a single `{key}` entry, recursively. */
+/** Example arrays keep their first exampleArrayMaxItems items at every depth; a list page's example is a shape, not the account's data. */
+function trimArrays(value: unknown): unknown {
+  if (Array.isArray(value)) return value.slice(0, exampleArrayMaxItems).map(trimArrays);
+  if (value === null || typeof value !== 'object') return value;
+  return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([k, v]) => [k, trimArrays(v)]));
+}
+
 function collapseDynamicKeys(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(collapseDynamicKeys);
   if (value === null || typeof value !== 'object') return value;
@@ -682,7 +700,7 @@ export function derive(input: DeriveInput): Redacted<ApiDoc> {
   const computedValues = new Set<string>();
   const inputsBound = new Set<string>();
   const authCookieCounts = new Map<string, number>();
-  const authHeaderCounts = new Map<string, { count: number; secretLike: boolean }>();
+  const authHeaderCounts = new Map<string, { count: number; secretLike: boolean; values: Set<string> }>();
   let totalRequests = 0;
 
   for (const run of usedRuns) {
@@ -779,8 +797,11 @@ export function derive(input: DeriveInput): Redacted<ApiDoc> {
             existing.values.add(rv.value);
             existing.source = rank(source, existing.source);
           } else acc.headers.set(rv.to.path, { count: 1, values: new Set([rv.value]), source });
-          const g = authHeaderCounts.get(rv.to.path);
-          authHeaderCounts.set(rv.to.path, { count: (g?.count ?? 0) + 1, secretLike: (g?.secretLike ?? false) || looksLikeSecret(rv.value) });
+          const g = authHeaderCounts.get(rv.to.path) ?? { count: 0, secretLike: false, values: new Set<string>() };
+          g.count += 1;
+          g.secretLike = g.secretLike || looksLikeSecret(rv.value);
+          if (g.values.size < contextHeaderValuesMax) g.values.add(rv.value);
+          authHeaderCounts.set(rv.to.path, g);
         } else if (rv.to.location === 'cookie') {
           acc.cookieNames.add(rv.to.path);
           authCookieCounts.set(rv.to.path, (authCookieCounts.get(rv.to.path) ?? 0) + 1);
@@ -829,9 +850,16 @@ export function derive(input: DeriveInput): Redacted<ApiDoc> {
 
   // Step 7: auth, from what is sent on most in-scope requests.
   const majority = (count: number): boolean => totalRequests > 0 && count * 2 > totalRequests;
-  const authCookies = [...authCookieCounts].filter(([, n]) => majority(n)).map(([name]) => name).sort();
+  const majorityCookies = [...authCookieCounts].filter(([, n]) => majority(n)).map(([name]) => name).sort();
+  const authCookies = majorityCookies.filter((name) => !isTrackerCookie(name));
+  const trackerCookies = majorityCookies.filter((name) => isTrackerCookie(name));
   const authHeaders = [...authHeaderCounts]
     .filter(([name, g]) => majority(g.count) && (isSensitiveName(name, policy) || g.secretLike))
+    .map(([name]) => name)
+    .sort();
+  // A custom header sent with one constant value on most requests is context (tenant, client kind), not a credential.
+  const contextHeaders = [...authHeaderCounts]
+    .filter(([name, g]) => majority(g.count) && !authHeaders.includes(name) && !isStandardHeader(name) && g.values.size === 1)
     .map(([name]) => name)
     .sort();
   const loginWorkflow = workflows.find((w) => w.verification) ?? workflows.find((w) => (w.id as string) === 'login');
@@ -857,9 +885,12 @@ export function derive(input: DeriveInput): Redacted<ApiDoc> {
       const total = traceById.get(runId)?.steps.length ?? 0;
       return steps.size >= ambientMinSteps && steps.size * 2 > total;
     });
+    const kind = acc.allPage ? 'page' : 'api';
+    const noise = kind === 'api' && isNoisePath(acc.pathTemplate);
+    const withoutBody = (body: BodyDoc | null): BodyDoc | null => (body === null ? null : { ...body, schema: null, example: null, undecoded: null });
     return {
       id: acc.id,
-      kind: acc.allPage ? 'page' : 'api',
+      kind,
       method: acc.method,
       host: acc.host,
       pathTemplate: acc.pathTemplate,
@@ -870,11 +901,18 @@ export function derive(input: DeriveInput): Redacted<ApiDoc> {
       auth: {
         cookies: authCookies.filter((c) => acc.cookieNames.has(c)),
         headers: authHeaders.filter((h) => acc.headers.has(h)),
+        contextHeaders: contextHeaders.filter((h) => acc.headers.has(h)),
       },
-      request: bodyDoc(acc.requests, undefined, policy),
-      responses: Object.fromEntries([...acc.responses].map(([status, slot]) => [status, bodyDoc(slot.examples, slot.mediaType, policy) as BodyDoc])),
+      request: noise ? withoutBody(bodyDoc(acc.requests, undefined, policy)) : bodyDoc(acc.requests, undefined, policy),
+      responses: Object.fromEntries(
+        [...acc.responses].map(([status, slot]) => {
+          const body = bodyDoc(slot.examples, slot.mediaType, policy) as BodyDoc;
+          return [status, noise ? (withoutBody(body) as BodyDoc) : body];
+        }),
+      ),
       bindings: [...acc.bindings.values()],
       ambient,
+      noise,
       cors: acc.cors || corsKeys.has(`${acc.method} ${acc.host}${acc.pathTemplate}`),
       observedIn: acc.observedIn,
     };
@@ -941,6 +979,7 @@ export function derive(input: DeriveInput): Redacted<ApiDoc> {
     computedValues: computedValues.size,
     bodiesEvicted: usedRuns.reduce((n, r) => n + r.trace.counts.bodies.evicted, 0),
     betweenSteps: usedRuns.reduce((n, r) => n + r.trace.counts.attribution.betweenSteps, 0),
+    noise: endpoints.filter((e) => e.noise).length,
   };
 
   const timeSource = usedRuns.length > 0 ? usedRuns : runs;
@@ -957,6 +996,8 @@ export function derive(input: DeriveInput): Redacted<ApiDoc> {
     auth: {
       cookies: authCookies,
       headers: authHeaders,
+      contextHeaders,
+      trackerCookies,
       ...(loginWorkflow ? { loginWorkflowId: loginWorkflow.id as WorkflowId } : {}),
       ...(loginWorkflow?.verification ? { verification: loginWorkflow.verification } : {}),
     },
@@ -964,8 +1005,23 @@ export function derive(input: DeriveInput): Redacted<ApiDoc> {
     endpoints,
     outside,
     coverage,
+    ...(input.code ? { code: codeDoc(input.code, endpoints) } : {}),
   };
   return doc as Redacted<ApiDoc>;
+}
+
+/** Mined routes against the observed endpoints: same template once `{...}` segments are normalised, any method. */
+function codeDoc(code: MinedCode, endpoints: readonly Endpoint[]): CodeDoc {
+  const observed = new Set(endpoints.map((e) => normaliseTemplate(e.pathTemplate)));
+  return {
+    routes: sortBy(code.routes, (r) => r.path).map((r) => ({ path: r.path, methods: r.methods, observed: observed.has(normaliseTemplate(r.path)) })),
+    enums: sortBy(code.enums, (e) => e.name),
+    bundles: code.bundles,
+  };
+}
+
+function normaliseTemplate(template: string): string {
+  return template.replace(/\{[^}]*\}/g, '{}').replace(/\/+$/, '').toLowerCase();
 }
 
 /** Merge examples into one documented body. Examples and text pass through redact(); schemas hold no values. */
@@ -977,7 +1033,7 @@ function bodyDoc(examples: readonly BodyExample[], fallbackMediaType: string | u
     return {
       mediaType: examples.find((e) => e.hasJson)?.mediaType ?? first.mediaType,
       schema: shapeToJsonSchema(jsons),
-      example: redact(collapseDynamicKeys(jsons[0]), { in: 'body', path: '$' }, policy),
+      example: redact(trimArrays(collapseDynamicKeys(jsons[0])), { in: 'body', path: '$' }, policy),
       undecoded: null,
     };
   }

@@ -184,3 +184,43 @@ test('renderApiDoc returns the four outputs and is deterministic', () => {
   assert.deepEqual(JSON.parse(first['api.json']), JSON.parse(JSON.stringify(sampleDoc)));
   assert.ok(PAGE_ID.length > 0);
 });
+
+test('renderers show context headers, tracker cookies and the routes and enums found in code', () => {
+  const doc = {
+    ...sampleDoc,
+    auth: { ...sampleDoc.auth, contextHeaders: ['team-id'], trackerCookies: ['_ga', '_gid'] },
+    code: {
+      routes: [
+        { path: '/v1/items/{id}', methods: ['GET' as const], observed: true },
+        { path: '/v1/items/{id}/archive', methods: ['POST' as const], observed: false },
+        { path: '/v1/catalog', methods: [], observed: false },
+      ],
+      enums: [{ name: 'ITEM_STATUS', values: ['draft', 'live'] }],
+      bundles: { fetched: 3, failed: 1 },
+    },
+  } as typeof sampleDoc;
+  const md = toMarkdown(doc);
+  assert.match(md, /- Context headers \(constant on most requests, not credentials\): `team-id`/);
+  assert.match(md, /- Also sent, not needed \(analytics and chat SDKs\): `_ga`, `_gid`/);
+  assert.match(md, /## Routes in code, not observed \(2\)/);
+  assert.match(md, /1 of the 3 routes in code were also observed/);
+  assert.match(md, /\| `\/v1\/items\/\{id\}\/archive` \| POST \|/);
+  assert.match(md, /\| `\/v1\/catalog` \| unknown \|/);
+  assert.ok(!/\| `\/v1\/items\/\{id\}` \|/.test(md), 'an observed route is documented above, not listed again');
+  assert.match(md, /## Enums in code \(1\)/);
+  assert.match(md, /`ITEM_STATUS` \| `draft`, `live`/);
+
+  const html = toHtml(doc);
+  assert.match(html, /<dt>Context headers<\/dt><dd><code>team-id<\/code>/);
+  assert.match(html, /<dt>Also sent, not needed<\/dt><dd><code>_ga<\/code> <code>_gid<\/code>/);
+  assert.match(html, /<section id="code"><h2>Routes in code, not observed \(2\)<\/h2>/);
+  assert.match(html, /<code>\/v1\/items\/\{id\}\/archive<\/code><\/td><td>POST<\/td>/);
+  assert.match(html, /<h3>Enums in code \(1\)<\/h3>/);
+
+  const plain = toMarkdown(sampleDoc);
+  assert.ok(!plain.includes('Routes in code'), 'no code section without mining');
+  assert.ok(!plain.includes('Also sent, not needed'), 'no tracker line when there are none');
+  assert.match(plain, /- Context headers \(constant on most requests, not credentials\): none/);
+  const api = toOpenApi(doc) as Json;
+  assert.ok(!('/v1/items/{id}/archive' in api.paths), 'openapi.json stays observed-only');
+});

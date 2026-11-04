@@ -10,7 +10,7 @@ import test from 'node:test';
 
 const root = path.resolve(import.meta.dirname, '..', '..', 'src', 'apidocs');
 
-const pureModules = ['body.ts', 'har.ts', 'derive.ts', 'redact.ts', 'types.ts', 'limits.ts', 'errors.ts', 'render/index.ts', 'render/openapi.ts', 'render/html.ts', 'render/markdown.ts'];
+const pureModules = ['body.ts', 'har.ts', 'derive.ts', 'redact.ts', 'noise.ts', 'mine.ts', 'types.ts', 'limits.ts', 'errors.ts', 'render/index.ts', 'render/openapi.ts', 'render/html.ts', 'render/markdown.ts'];
 const ioImports = ['node:fs', 'node:http', 'node:https', 'node:net', 'node:child_process', 'playwright', 'node:readline'];
 
 async function importsOf(file: string): Promise<string[]> {

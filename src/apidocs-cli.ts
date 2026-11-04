@@ -4,29 +4,73 @@
 //   inspect <trace.jsonl> [--step <id>] [--host <h>] [--grep <s>] [--show <exchangeId>] [--raw]
 //   har     <trace.jsonl> [-o <out.har>]
 //   build   <target> [--workflows <dir>] [--jobs <dir>] [--out <dir>] [--redact-key <k>]...
+//   mine    <target> [--jobs <dir>]
 //
-// Exit codes: 0 ok, 1 unexpected, 2 environment (browser, attach), 3 input (spec, trace), 4 run did not complete.
+// Exit codes: 0 ok, 1 unexpected, 2 environment (browser, attach, every bundle fetch failed), 3 input (spec, trace),
+// 4 run did not complete.
 // `record` prunes traces older than traceRetentionDays before it starts. `build` reads every trace of the site,
-// warns (never fails) when a workflow's latest run is not completed, and writes the four outputs atomically.
-// `inspect` prints wire headers and cookies redacted unless --raw. Design: docs/design/api-docs.md §9.
+// warns (never fails) when a workflow's latest run is not completed, picks up jobs/<site>/mined.json when `mine`
+// wrote one, and writes the four outputs atomically. `mine` fetches the Script URLs of the latest trace without
+// cookies into jobs/<site>/bundles/ (manifest.json is the durable record; a rerun resumes from it) and writes
+// jobs/<site>/mined.json. `inspect` prints wire headers and cookies redacted unless --raw.
+// Design: docs/design/api-docs.md §9, docs/design/teardown-parity.md §4.
 
+import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { derive } from './apidocs/derive.js';
 import { recordWithHumanDriver, siteIdOf, type BrowserSource } from './apidocs/drivers/human.js';
 import { CaptureError, exitCodeFor } from './apidocs/errors.js';
-import { showBodyMaxChars } from './apidocs/limits.js';
+import { bundleMaxBytes, bundlesMax, mineFetchConcurrency, mineFetchTimeoutMs, showBodyMaxChars } from './apidocs/limits.js';
 import { toHar } from './apidocs/har.js';
+import { extractChunkRefs, mergeMined, mineBundle, type MinedParts } from './apidocs/mine.js';
 import { emptyRedactionPolicy, isSensitiveName, REDACTED } from './apidocs/redact.js';
 import { renderApiDoc } from './apidocs/render/index.js';
 import { assemble, listTraces, newRunId, pruneTraces, readTrace, tracePathFor } from './apidocs/trace.js';
-import { WorkflowSchema, type Body, type Exchange, type Trace, type Workflow } from './apidocs/types.js';
+import { MinedCodeSchema, WorkflowSchema, type Body, type Exchange, type MinedCode, type Trace, type Workflow } from './apidocs/types.js';
 import { loadTarget, type ResolvedTarget } from './target.js';
 
 export interface ParsedArgs {
-  command: 'record' | 'inspect' | 'har' | 'build';
+  command: 'record' | 'inspect' | 'har' | 'build' | 'mine';
   positional: string[];
   flags: Record<string, string | string[] | true>;
+}
+
+/** What `cliDeps.fetchText` returns: the status, the decoded body, and its size (the size alone when it was over the cap). */
+export interface FetchedText {
+  status: number;
+  text: string;
+  bytes: number;
+}
+
+/**
+ * The one network call `mine` makes: a cookie-less, header-less GET that follows redirects and stops reading past
+ * bundleMaxBytes (returning the size seen so far with an empty text). Never sends credentials: a bundle behind
+ * sign-in is simply recorded failed.
+ */
+async function fetchText(url: string, signal: AbortSignal): Promise<FetchedText> {
+  const response = await fetch(url, { signal, redirect: 'follow', credentials: 'omit' });
+  const declared = Number(response.headers.get('content-length') ?? '0');
+  if (declared > bundleMaxBytes) {
+    await response.body?.cancel();
+    return { status: response.status, text: '', bytes: declared };
+  }
+  const chunks: Uint8Array[] = [];
+  let bytes = 0;
+  if (response.body) {
+    const reader = response.body.getReader();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      bytes += value.byteLength;
+      if (bytes > bundleMaxBytes) {
+        await reader.cancel();
+        return { status: response.status, text: '', bytes };
+      }
+      chunks.push(value);
+    }
+  }
+  return { status: response.status, text: new TextDecoder().decode(Buffer.concat(chunks)), bytes };
 }
 
 /**
@@ -45,6 +89,7 @@ export const cliDeps = {
   derive,
   renderApiDoc,
   isSensitiveName,
+  fetchText,
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -57,6 +102,7 @@ const usage: Record<ParsedArgs['command'], string> = {
   inspect: 'apidocs inspect <trace.jsonl> [--step <id>] [--host <h>] [--grep <s>] [--show <exchangeId>] [--raw]',
   har: 'apidocs har <trace.jsonl> [-o <out.har>]',
   build: 'apidocs build <target> [--workflows <dir>] [--jobs <dir>] [--out <dir>] [--redact-key <k>]...',
+  mine: 'apidocs mine <target> [--jobs <dir>]',
 };
 const usageAll = Object.values(usage).join('\n');
 const commands = Object.keys(usage) as ParsedArgs['command'][];
@@ -425,11 +471,14 @@ export async function build(args: ParsedArgs): Promise<number> {
     else if (latest.trace.outcome !== 'completed') warn(`workflow ${workflow.id}: latest run ${latest.trace.runId} is ${latest.trace.outcome}, not completed`);
   }
 
+  const code = await readMinedCode(minedPathFor(jobsDir, site));
+
   const doc = cliDeps.derive({
     target,
     workflows,
     traces,
     redaction: { ...emptyRedactionPolicy, extraKeys: flagList(args, 'redact-key') },
+    ...(code ? { code } : {}),
   });
   const rendered = cliDeps.renderApiDoc(doc);
   for (const [name, text] of Object.entries(rendered)) {
@@ -442,6 +491,200 @@ export async function build(args: ParsedArgs): Promise<number> {
     `coverage: steps with exchanges ${c.stepsWithExchanges}/${c.steps}, endpoints ${c.endpoints} (${c.endpointsWithExample} with example), ` +
       `bindings ${c.bindings}, inputs bound ${c.inputsBound}, computed ${c.computedValues}, bodies evicted ${c.bodiesEvicted}, between steps ${c.betweenSteps}`,
   );
+  if (code) out(`code: routes ${code.routes.length}, enums ${code.enums.length} from mined.json`);
+  return 0;
+}
+
+function minedPathFor(jobsDir: string, site: string): string {
+  return path.join(jobsDir, site, 'mined.json');
+}
+
+/** `jobs/<site>/mined.json` when it exists and parses; a malformed file is a warning, not a failure. */
+async function readMinedCode(file: string): Promise<MinedCode | undefined> {
+  let text: string;
+  try {
+    text = await fs.readFile(file, 'utf8');
+  } catch {
+    return undefined;
+  }
+  let json: unknown;
+  try {
+    json = JSON.parse(text);
+  } catch (error) {
+    warn(`${file} is not valid JSON (${(error as Error).message}); building without code routes`);
+    return undefined;
+  }
+  const parsed = MinedCodeSchema.safeParse(json);
+  if (!parsed.success) {
+    warn(`${file} is not a mined.json this build understands; building without code routes. Rerun \`apidocs mine\`.`);
+    return undefined;
+  }
+  return parsed.data;
+}
+
+// ---------------------------------------------------------------------------------------------
+// mine
+// ---------------------------------------------------------------------------------------------
+
+/** One line of `jobs/<site>/bundles/manifest.json`: the acknowledgement that a bundle was fetched (or that it could not be). */
+type ManifestEntry = { sha256: string; bytes: number; fetchedAt: string; file: string } | { failed: string; at: string };
+
+interface BundleManifest {
+  manifestVersion: 1;
+  site: string;
+  entries: Record<string, ManifestEntry>;
+}
+
+async function readManifest(file: string, site: string): Promise<BundleManifest> {
+  const empty: BundleManifest = { manifestVersion: 1, site, entries: {} };
+  let json: unknown;
+  try {
+    json = JSON.parse(await fs.readFile(file, 'utf8'));
+  } catch {
+    return empty;
+  }
+  const m = json as Partial<BundleManifest> | null;
+  if (!m || m.manifestVersion !== 1 || m.site !== site || typeof m.entries !== 'object' || m.entries === null) {
+    warn(`${file} is not a manifest for ${site}; starting a fresh one`);
+    return empty;
+  }
+  return { manifestVersion: 1, site, entries: { ...m.entries } };
+}
+
+type FetchOutcome = { ok: true; text: string; bytes: number } | { ok: false; reason: string };
+
+/** One GET with the timeout; a network error or a non-2xx status is a failure the caller may retry, `too-large` is not. */
+async function fetchOnce(url: string): Promise<FetchOutcome> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), mineFetchTimeoutMs);
+  try {
+    const result = await cliDeps.fetchText(url, controller.signal);
+    if (result.bytes > bundleMaxBytes) return { ok: false, reason: 'too-large' };
+    if (result.status < 200 || result.status >= 300) return { ok: false, reason: `status ${result.status}` };
+    return { ok: true, text: result.text, bytes: result.bytes };
+  } catch (error) {
+    const message = error instanceof Error ? (error.name === 'AbortError' ? `timeout after ${mineFetchTimeoutMs}ms` : error.message) : String(error);
+    return { ok: false, reason: `network: ${message}` };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function fetchWithRetry(url: string, attempts: number): Promise<FetchOutcome> {
+  let last: FetchOutcome = { ok: false, reason: 'not attempted' };
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    last = await fetchOnce(url);
+    if (last.ok || last.reason === 'too-large') return last;
+  }
+  return last;
+}
+
+export async function mine(args: ParsedArgs): Promise<number> {
+  const targetName = positionalOrThrow(args, 'target');
+  const target = await loadTargetOrThrow(targetName, 'mine');
+  const site = siteIdOf(target);
+  const jobsDir = flagString(args, 'jobs') ?? 'jobs';
+
+  const paths = await cliDeps.listTraces(jobsDir, site);
+  const latest = paths[paths.length - 1];
+  if (!latest) {
+    throw new CaptureError(
+      'trace-unreadable',
+      `no traces for ${site} under ${jobsDir}`,
+      `Run \`apidocs record ${targetName} --workflow <file>\` or the read-only tour first; mine reads the Script URLs of the latest trace.`,
+    );
+  }
+  const trace = cliDeps.assemble(await cliDeps.readTrace(latest));
+  const seeds = [
+    ...new Set(
+      trace.exchanges
+        .filter((exchange) => exchange.resourceType === 'Script' && hostMatches(exchange.request.host, target.host))
+        .map((exchange) => exchange.request.url),
+    ),
+  ].slice(0, bundlesMax);
+  if (seeds.length === 0) {
+    throw new CaptureError(
+      'trace-unreadable',
+      `latest trace ${latest} has no Script exchanges on ${target.host}`,
+      'Record a run that loads the app (the start page must be on the target host); scripts served from another host are not mined.',
+    );
+  }
+
+  const bundlesDir = path.join(jobsDir, site, 'bundles');
+  const manifestFile = path.join(bundlesDir, 'manifest.json');
+  const manifest = await readManifest(manifestFile, site);
+
+  const queue = [...seeds];
+  const known = new Set(seeds);
+  const mined: MinedParts[] = [];
+  let fetched = 0;
+  let failed = 0;
+
+  const resolveOne = async (url: string): Promise<{ url: string; text?: string }> => {
+    const existing = manifest.entries[url];
+    if (existing && 'sha256' in existing) {
+      try {
+        return { url, text: await fs.readFile(path.join(bundlesDir, existing.file), 'utf8') };
+      } catch {
+        // The manifest says fetched but the file is gone: fetch it again.
+      }
+    }
+    const attempts = existing && 'failed' in existing ? 1 : 2;
+    const outcome = await fetchWithRetry(url, attempts);
+    const now = new Date().toISOString();
+    if (!outcome.ok) {
+      manifest.entries[url] = { failed: outcome.reason, at: now };
+      return { url };
+    }
+    const sha256 = createHash('sha256').update(outcome.text).digest('hex');
+    const file = `${sha256.slice(0, 16)}.js`;
+    await writeAtomic(path.join(bundlesDir, file), outcome.text);
+    manifest.entries[url] = { sha256, bytes: outcome.bytes, fetchedAt: now, file };
+    return { url, text: outcome.text };
+  };
+
+  while (queue.length > 0) {
+    const batch = queue.splice(0, mineFetchConcurrency);
+    const results = await Promise.all(batch.map(resolveOne));
+    for (const result of results) {
+      if (result.text === undefined) {
+        failed += 1;
+        continue;
+      }
+      fetched += 1;
+      mined.push(mineBundle(result.text));
+      for (const ref of extractChunkRefs(result.text, result.url)) {
+        if (known.has(ref) || known.size >= bundlesMax) continue;
+        known.add(ref);
+        queue.push(ref);
+      }
+    }
+    await writeAtomic(manifestFile, `${JSON.stringify(manifest, null, 2)}\n`);
+  }
+
+  const merged = mergeMined(mined);
+  const withMethod = merged.routes.filter((route) => route.methods.length > 0).length;
+  const metric = `mined: bundles ${fetched} fetched, ${failed} failed, routes ${merged.routes.length} (${withMethod} with method), enums ${merged.enums.length}`;
+  if (fetched === 0) {
+    throw new CaptureError(
+      'browser-unreachable',
+      `${metric}\nno bundle could be fetched for ${site}`,
+      `Bundles are fetched without cookies; see ${manifestFile} for the status of each URL. Check the network and that ${target.host} serves its scripts publicly, then rerun.`,
+    );
+  }
+
+  const minedCode: MinedCode = MinedCodeSchema.parse({
+    minedVersion: 1,
+    site,
+    minedAt: new Date().toISOString(),
+    routes: merged.routes,
+    enums: merged.enums,
+    bundles: { fetched, failed },
+  });
+  const minedFile = minedPathFor(jobsDir, site);
+  await writeAtomic(minedFile, `${JSON.stringify(minedCode, null, 2)}\n`);
+  out(metric);
+  out(`wrote ${minedFile}`);
   return 0;
 }
 
@@ -457,6 +700,8 @@ export async function main(argv: readonly string[]): Promise<number> {
         return await har(args);
       case 'build':
         return await build(args);
+      case 'mine':
+        return await mine(args);
     }
   } catch (error) {
     if (error instanceof CaptureError) {

@@ -59,6 +59,7 @@ function operation(doc: ApiDoc, ep: Endpoint, usedIds: Set<string>, serverUrls: 
     'x-bindings': ep.bindings,
   };
   if (ep.ambient) op['x-ambient'] = true;
+  if (ep.noise) op['x-noise'] = true;
   const tags = tagsOf(doc, ep);
   if (tags.length > 0) op['tags'] = tags;
   if (ep.request !== null) op['requestBody'] = requestBody(ep.request);

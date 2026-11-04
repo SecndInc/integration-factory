@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { derive, findBindings, graphqlOperation, graphqlOperationInfo, shapeToJsonSchema, templatePath } from '../../src/apidocs/derive.js';
-import { schemaDepthMax, schemaKeysPerObjectMax } from '../../src/apidocs/limits.js';
+import { exampleArrayMaxItems, schemaDepthMax, schemaKeysPerObjectMax } from '../../src/apidocs/limits.js';
+import { renderApiDoc } from '../../src/apidocs/render/index.js';
 import { emptyRedactionPolicy } from '../../src/apidocs/redact.js';
 import { ApiDocSchema, WorkflowSchema, type Exchange, type Trace, type Workflow } from '../../src/apidocs/types.js';
 import { targetFromUrl } from '../../src/target.js';
@@ -505,8 +506,66 @@ test('derive detects auth cookies and headers and links the login workflow', () 
   assert.equal(doc.auth.loginWorkflowId, 'login');
   assert.equal(doc.auth.verification, 'password');
   const create = doc.endpoints.find((e) => e.method === 'POST')!;
-  assert.deepEqual(create.auth, { cookies: ['sid'], headers: ['x-csrf-token'] });
+  assert.deepEqual(create.auth, { cookies: ['sid'], headers: ['x-csrf-token'], contextHeaders: [] });
   assert.equal(create.headers.find((h) => h.name === 'x-csrf-token')?.valueKind, 'redacted');
+  assert.deepEqual(doc.auth.contextHeaders, []);
+  assert.deepEqual(doc.auth.trackerCookies, []);
+});
+
+test('derive keeps tracker cookies out of auth and lists constant custom headers as context', () => {
+  const cookies = [{ name: 'sid', value: sid }, { name: '_ga', value: 'GA1.2.1234567890.1700000000' }, { name: '_gid', value: 'GA1.2.987654321.1700000000' }];
+  const headers: [string, string][] = [['team-id', '125089'], ['x-requested-with', 'XMLHttpRequest'], ['x-csrf-token', csrf]];
+  const tr = trace('r1', 'create-draft', ['open', 'create', 'publish'], [
+    ex({ seq: 1, step: 'open', path: '/api/team', headers, cookies, resBody: { id: 1 } }),
+    ex({ seq: 2, step: 'create', method: 'POST', path: '/api/drafts', headers, cookies, reqBody: { title: 'x' }, resBody: { id: 'a1b2c3d4e5f6' } }),
+    ex({ seq: 3, step: 'publish', path: '/api/drafts/a1b2c3d4e5f6', headers: [['team-id', '125089'], ['x-csrf-token', csrf]], cookies, resBody: { ok: true } }),
+  ]);
+  const doc = run([tr]);
+  assert.deepEqual(doc.auth.cookies, ['sid']);
+  assert.deepEqual(doc.auth.trackerCookies, ['_ga', '_gid']);
+  assert.deepEqual(doc.auth.headers, ['x-csrf-token']);
+  assert.deepEqual(doc.auth.contextHeaders, ['team-id', 'x-requested-with']);
+  const team = doc.endpoints.find((e) => e.pathTemplate === '/api/team')!;
+  assert.deepEqual(team.auth, { cookies: ['sid'], headers: ['x-csrf-token'], contextHeaders: ['team-id', 'x-requested-with'] });
+  const detail = doc.endpoints.find((e) => e.pathTemplate.startsWith('/api/drafts/{'))!;
+  assert.deepEqual(detail.auth.contextHeaders, ['team-id'], 'only the context headers this endpoint sends');
+  assert.ok(ApiDocSchema.safeParse(doc).success);
+});
+
+test('derive marks mined routes observed when a trace saw the same template', () => {
+  const doc = run([shopRun('r1', '9f2c4e8a1b3d5f7a9c0e', 0)]);
+  assert.equal(doc.code, undefined);
+  const withCode = derive({
+    target,
+    workflows: [workflow],
+    traces: [{ path: 'trace-r1.jsonl', trace: shopRun('r1', '9f2c4e8a1b3d5f7a9c0e', 0) }],
+    redaction: emptyRedactionPolicy,
+    code: {
+      minedVersion: 1,
+      site: 'shop',
+      minedAt: iso(0),
+      routes: [
+        { path: '/api/drafts/{id}/publish', methods: ['PUT'] },
+        { path: '/api/drafts', methods: ['POST', 'GET'] },
+        { path: '/api/drafts/{id}/archive', methods: ['POST'] },
+        { path: '/api/catalog', methods: [] },
+      ],
+      enums: [{ name: 'STATUS', values: ['draft', 'published'] }],
+      bundles: { fetched: 2, failed: 1 },
+    },
+  });
+  assert.deepEqual(
+    withCode.code?.routes.map((r) => [r.path, r.observed]),
+    [
+      ['/api/catalog', false],
+      ['/api/drafts', true],
+      ['/api/drafts/{id}/archive', false],
+      ['/api/drafts/{id}/publish', true],
+    ],
+  );
+  assert.deepEqual(withCode.code?.enums, [{ name: 'STATUS', values: ['draft', 'published'] }]);
+  assert.deepEqual(withCode.code?.bundles, { fetched: 2, failed: 1 });
+  assert.ok(ApiDocSchema.safeParse(withCode).success);
 });
 
 test('derive lists incomplete and non-completed traces but does not use them', () => {
@@ -555,6 +614,30 @@ test('derive folds preflights into cors, marks pages, ambient endpoints, and out
   assert.equal(byId[`GET ${host}/api/stray`]!.ambient, false);
   assert.deepEqual(doc.outside.map((o) => [o.exchangeId, o.stepId]), [['s1:r7:0', null]]);
   assert.ok(!doc.workflows[0]!.sequence.some((s) => s.endpointId.endsWith('/api/poll')));
+});
+
+test('derive lists noise endpoints without bodies and trims example arrays', () => {
+  const t = trace('r1', 'create-draft', ['open', 'create', 'publish', 'extra'], [
+    ex({ seq: 1, step: 'open', path: '/locales/en/app.json', resBody: { greeting: 'hi', farewell: 'bye' } }),
+    ex({ seq: 2, step: 'open', path: '/api/items', resBody: { items: [{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }], tags: ['a', 'b', 'c'] } }),
+  ]);
+  const doc = run([t]);
+  ApiDocSchema.parse(doc);
+  const byId = Object.fromEntries(doc.endpoints.map((e) => [e.id, e]));
+  const locale = byId[`GET ${host}/locales/en/app.json`]!;
+  assert.equal(locale.noise, true);
+  assert.equal(locale.responses['200']!.example, null, 'a locale bundle keeps no example');
+  assert.equal(locale.responses['200']!.schema, null);
+  const items = byId[`GET ${host}/api/items`]!;
+  assert.equal(items.noise, false);
+  const example = items.responses['200']!.example as { items: unknown[]; tags: string[] };
+  assert.equal(example.items.length, exampleArrayMaxItems, 'arrays in examples are cut to exampleArrayMaxItems');
+  assert.equal(example.tags.length, exampleArrayMaxItems);
+  assert.equal(doc.coverage.noise, 1);
+  const md = renderApiDoc(doc)['README.md'];
+  assert.ok(md.includes('## Assets, locale bundles and trackers (1)'), md);
+  assert.ok(md.includes('`GET /locales/en/app.json`'));
+  assert.ok(!md.includes('"greeting"'), 'the bundle body is not in the README');
 });
 
 test('derive redacts examples, params, headers and secret inputs', () => {

@@ -1,0 +1,373 @@
+{
+  "workflowVersion": 1,
+  "id": "readonly-tour",
+  "name": "Read-only tour",
+  "goal": "Open the signed-in start page, every read-only navigation link it shows, and a few of the items on each page.",
+  "effect": "read",
+  "preconditions": [
+    "signed in"
+  ],
+  "inputs": [],
+  "steps": [
+    {
+      "id": "open-start",
+      "do": "Open https://app.roofr.com/",
+      "hints": [
+        "https://app.roofr.com/"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "item-2",
+      "do": "Open row 1 on /dashboard/team/{teamId}/jobs",
+      "hints": [
+        "/dashboard/team/{teamId}/jobs"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "item-3",
+      "do": "Open row 2 on /dashboard/team/{teamId}/jobs",
+      "hints": [
+        "/dashboard/team/{teamId}/jobs"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "item-4",
+      "do": "Open row 3 on /dashboard/team/{teamId}/jobs",
+      "hints": [
+        "/dashboard/team/{teamId}/jobs"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "open-5",
+      "do": "Open Home",
+      "hints": [
+        "https://app.roofr.com/dashboard/team/125089/home"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "item-6",
+      "do": "Open item 1 on /dashboard/team/{teamId}/home",
+      "hints": [
+        "/dashboard/team/{teamId}/jobs/details/{detailId}"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "open-7",
+      "do": "Open Jobs",
+      "hints": [
+        "https://app.roofr.com/dashboard/team/125089/jobs"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "item-8",
+      "do": "Open row 1 on /dashboard/team/{teamId}/jobs",
+      "hints": [
+        "/dashboard/team/{teamId}/jobs"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "item-9",
+      "do": "Open row 2 on /dashboard/team/{teamId}/jobs",
+      "hints": [
+        "/dashboard/team/{teamId}/jobs"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "item-10",
+      "do": "Open row 3 on /dashboard/team/{teamId}/jobs",
+      "hints": [
+        "/dashboard/team/{teamId}/jobs"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "open-11",
+      "do": "Open Calendar",
+      "hints": [
+        "https://app.roofr.com/dashboard/team/125089/calendar"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "open-12",
+      "do": "Open Performance",
+      "hints": [
+        "https://app.roofr.com/dashboard/team/125089/performance"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "open-13",
+      "do": "Open AI ReceptionistBeta",
+      "hints": [
+        "https://app.roofr.com/dashboard/team/125089/roofr-voice"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "open-14",
+      "do": "Open Roofr SitesBeta",
+      "hints": [
+        "https://app.roofr.com/dashboard/team/125089/sites"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "open-15",
+      "do": "Open Instant Estimator",
+      "hints": [
+        "https://app.roofr.com/dashboard/team/125089/instant-estimator"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "open-16",
+      "do": "Open Measurements",
+      "hints": [
+        "https://app.roofr.com/dashboard/team/125089/report"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "item-17",
+      "do": "Open item 1 on /dashboard/team/{teamId}/report/queued",
+      "hints": [
+        "/dashboard/team/{teamId}/report/preview/{previewId}"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "item-18",
+      "do": "Open item 2 on /dashboard/team/{teamId}/report/queued",
+      "hints": [
+        "/dashboard/team/{teamId}/report/preview/{previewId}"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "open-19",
+      "do": "Open Proposals",
+      "hints": [
+        "https://app.roofr.com/dashboard/team/125089/proposals"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "item-20",
+      "do": "Open row 1 on /dashboard/team/{teamId}/proposals/list",
+      "hints": [
+        "/dashboard/team/{teamId}/proposals/list"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "item-21",
+      "do": "Open row 2 on /dashboard/team/{teamId}/proposals/list",
+      "hints": [
+        "/dashboard/team/{teamId}/proposals/list"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "item-22",
+      "do": "Open row 3 on /dashboard/team/{teamId}/proposals/list",
+      "hints": [
+        "/dashboard/team/{teamId}/proposals/list"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "open-23",
+      "do": "Open PDF Signer",
+      "hints": [
+        "https://app.roofr.com/dashboard/team/125089/pdf-signer"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "open-24",
+      "do": "Open Material Orders",
+      "hints": [
+        "https://app.roofr.com/dashboard/team/125089/material-orders"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "item-25",
+      "do": "Open row 1 on /dashboard/team/{teamId}/material-orders",
+      "hints": [
+        "/dashboard/team/{teamId}/material-orders"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "item-26",
+      "do": "Open row 2 on /dashboard/team/{teamId}/material-orders",
+      "hints": [
+        "/dashboard/team/{teamId}/material-orders"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "open-27",
+      "do": "Open Work Orders",
+      "hints": [
+        "https://app.roofr.com/dashboard/work-orders"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "open-28",
+      "do": "Open Invoices",
+      "hints": [
+        "https://app.roofr.com/dashboard/team/125089/invoices"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "item-29",
+      "do": "Open item 1 on /dashboard/team/{teamId}/invoices",
+      "hints": [
+        "/dashboard/team/{teamId}/invoice/{invoiceId}/details"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "item-30",
+      "do": "Open item 2 on /dashboard/team/{teamId}/invoices",
+      "hints": [
+        "/dashboard/team/{teamId}/invoice/{invoiceId}/details"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "item-31",
+      "do": "Open item 3 on /dashboard/team/{teamId}/invoices",
+      "hints": [
+        "/dashboard/team/{teamId}/invoice/{invoiceId}/details"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "open-32",
+      "do": "Open Contacts",
+      "hints": [
+        "https://app.roofr.com/dashboard/contacts"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "open-33",
+      "do": "Open File Manager",
+      "hints": [
+        "https://app.roofr.com/dashboard/team/125089/file-manager"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "open-34",
+      "do": "Open Catalog",
+      "hints": [
+        "https://app.roofr.com/dashboard/team/125089/catalog"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "open-35",
+      "do": "Open Automations",
+      "hints": [
+        "https://app.roofr.com/dashboard/team/125089/automations"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "open-36",
+      "do": "Open Communications",
+      "hints": [
+        "https://app.roofr.com/dashboard/team/125089/communications"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    }
+  ]
+}

@@ -2,6 +2,7 @@
 // Headings carry the facts ("3 workflows, 27 endpoints, 2 bindings"), not labels. Pure.
 // Design: docs/design/api-docs.md §6.
 
+import { bindingsMaxRows, observedInMaxRows } from '../limits.js';
 import type { Redacted } from '../redact.js';
 import type { ApiDoc, BodyDoc, Endpoint, Evidence } from '../types.js';
 import { bindingsOut, endpointTitle, plural, prettyValue, requiredText, sortedEndpoints, stableJson, statusByExchange } from './shared.js';
@@ -10,8 +11,9 @@ export function toMarkdown(doc: Redacted<ApiDoc>): string {
   const endpoints = sortedEndpoints(doc);
   const byId = new Map(endpoints.map((ep) => [ep.id as string, ep]));
   const api = endpoints.filter((ep) => ep.kind === 'api');
-  const foreground = api.filter((ep) => !ep.ambient);
-  const ambient = api.filter((ep) => ep.ambient);
+  const noise = api.filter((ep) => ep.noise);
+  const foreground = api.filter((ep) => !ep.ambient && !ep.noise);
+  const ambient = api.filter((ep) => ep.ambient && !ep.noise);
   const wfNames = new Map(doc.workflows.map((wf) => [wf.id as string, wf.name]));
   const out: string[] = [];
 
@@ -49,6 +51,8 @@ export function toMarkdown(doc: Redacted<ApiDoc>): string {
 
   out.push('## Auth', '');
   out.push(`- Cookies: ${list(doc.auth.cookies)}`, `- Headers: ${list(doc.auth.headers)}`);
+  out.push(`- Context headers (constant on most requests, not credentials): ${list(doc.auth.contextHeaders)}`);
+  if (doc.auth.trackerCookies.length > 0) out.push(`- Also sent, not needed (analytics and chat SDKs): ${list(doc.auth.trackerCookies)}`);
   out.push(`- Established by: ${doc.auth.loginWorkflowId === undefined ? 'not declared' : text(wfNames.get(doc.auth.loginWorkflowId) ?? doc.auth.loginWorkflowId)}`);
   out.push(`- Verification: ${doc.auth.verification ?? 'not declared'}`, '');
 
@@ -88,6 +92,11 @@ export function toMarkdown(doc: Redacted<ApiDoc>): string {
   out.push(`## ${plural(foreground.length, 'endpoint')}`, '');
   for (const ep of foreground) out.push(...endpointSection(doc, ep, byId, wfNames));
 
+  if (noise.length > 0) {
+    out.push(`## Assets, locale bundles and trackers (${noise.length})`, '', 'Requests the app makes for itself, not an API: listed so the count is accounted for, bodies not documented.', '');
+    for (const ep of noise) out.push(`- ${code(`${ep.method} ${ep.pathTemplate}`)}`);
+    out.push('');
+  }
   if (ambient.length > 0) {
     out.push(`## Background traffic (${ambient.length})`, '');
     for (const ep of ambient) out.push(...endpointSection(doc, ep, byId, wfNames));
@@ -99,14 +108,32 @@ export function toMarkdown(doc: Redacted<ApiDoc>): string {
     out.push('');
   }
 
+  if (doc.code !== undefined) {
+    const unseen = doc.code.routes.filter((r) => !r.observed);
+    const seen = doc.code.routes.length - unseen.length;
+    out.push(`## Routes in code, not observed (${unseen.length})`, '');
+    out.push(
+      `Read from ${plural(doc.code.bundles.fetched, 'script bundle')} the app loads (${doc.code.bundles.failed} failed to fetch). ${seen} of the ${doc.code.routes.length} routes in code were also observed in a trace and are documented above. The rest were never called while recording: no schema, no example, and the method is the call site's when it showed one.`,
+      '',
+    );
+    if (unseen.length > 0) out.push(...table(['Path', 'Methods'], unseen.map((r) => [code(r.path), r.methods.length === 0 ? 'unknown' : r.methods.join(', ')])), '');
+    if (doc.code.enums.length > 0) {
+      out.push(`## Enums in code (${doc.code.enums.length})`, '');
+      out.push(...table(['Name', 'Values'], doc.code.enums.map((en) => [code(en.name), en.values.map(code).join(', ')])), '');
+    }
+  }
+
   return `${out.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd()}\n`;
 }
 
 function endpointSection(doc: ApiDoc, ep: Endpoint, byId: Map<string, Endpoint>, wfNames: Map<string, string>): string[] {
   const out: string[] = [`### ${code(endpointTitle(ep))}`, ''];
   out.push(`Host: ${code(ep.host)}${ep.ambient ? ' (background)' : ''}${ep.cors ? ' (CORS)' : ''}`, '');
-  if (ep.auth.cookies.length + ep.auth.headers.length > 0) {
-    out.push(`Auth: ${[...ep.auth.cookies.map((n) => `cookie ${code(n)}`), ...ep.auth.headers.map((n) => `header ${code(n)}`)].join(', ')}`, '');
+  if (ep.auth.cookies.length + ep.auth.headers.length + ep.auth.contextHeaders.length > 0) {
+    out.push(
+      `Auth: ${[...ep.auth.cookies.map((n) => `cookie ${code(n)}`), ...ep.auth.headers.map((n) => `header ${code(n)}`), ...ep.auth.contextHeaders.map((n) => `context header ${code(n)}`)].join(', ')}`,
+      '',
+    );
   }
   const params = [...ep.pathParams.map((p) => ['path', p] as const), ...ep.queryParams.map((p) => ['query', p] as const)];
   if (params.length > 0) {
@@ -126,9 +153,13 @@ function endpointSection(doc: ApiDoc, ep: Endpoint, byId: Map<string, Endpoint>,
   for (const { endpoint, binding } of bindingsOut(doc, ep.id)) {
     bindings.push(`- ${code(`${binding.from.location} ${binding.from.path}`)} feeds ${code(endpointTitle(endpoint))} ${code(`${binding.to.location} ${binding.to.path}`)}`);
   }
-  if (bindings.length > 0) out.push('**Bindings**', '', ...bindings, '');
+  if (bindings.length > 0) {
+    out.push(`**Bindings** (${bindings.length})`, '', ...bindings.slice(0, bindingsMaxRows), ...(bindings.length > bindingsMaxRows ? [`- and ${bindings.length - bindingsMaxRows} more`] : []), '');
+  }
   if (ep.observedIn.length > 0) {
-    out.push('**Observed in**', '', ...ep.observedIn.map((ev) => `- ${evidenceText(ev, wfNames)}`), '');
+    const shown = ep.observedIn.slice(0, observedInMaxRows);
+    const more = ep.observedIn.length - shown.length;
+    out.push(`**Observed in** (${ep.observedIn.length})`, '', ...shown.map((ev) => `- ${evidenceText(ev, wfNames)}`), ...(more > 0 ? [`- and ${more} more`] : []), '');
   }
   return out;
 }

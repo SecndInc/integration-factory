@@ -145,11 +145,11 @@ test('guard-write: jobs/ and docs/apis/ are machine-written; everything else is 
 test('after-build: recognises the build and tour commands and stays quiet otherwise', () => {
   const r = spawnSync(
     process.execPath,
-    ['-e', `import(${JSON.stringify(pathToFileURL(path.join(hooksDir, 'after-build.mjs')).href)}).then(m => console.log(JSON.stringify([m.siteOf('npm run apidocs -- build roofr'), m.siteOf('npx tsx src/apidocs-cli.ts build acme --out x'), m.siteOf('npx tsx scripts/apidocs-readonly-tour.ts roofr --port 9222'), m.siteOf('npm run apidocs:tour -- roofr'), m.siteOf('npm run apidocs -- inspect jobs/x.jsonl')])))`],
+    ['-e', `import(${JSON.stringify(pathToFileURL(path.join(hooksDir, 'after-build.mjs')).href)}).then(m => console.log(JSON.stringify([m.siteOf('npm run apidocs -- build roofr'), m.siteOf('npx tsx src/apidocs-cli.ts build acme --out x'), m.siteOf('npx tsx scripts/apidocs-readonly-tour.ts roofr --port 9222'), m.siteOf('npm run apidocs:tour -- roofr'), m.siteOf('npm run apidocs -- inspect jobs/x.jsonl'), m.siteOf('wc -l scripts/apidocs-readonly-tour.ts src/apidocs-cli.ts'), m.siteOf('grep -n x scripts/apidocs-readonly-tour.ts | head')])))`],
     { encoding: 'utf8' },
   );
   assert.equal(r.status, 0, r.stderr);
-  assert.deepEqual(JSON.parse(r.stdout.trim()), ['roofr', 'acme', 'roofr', 'roofr', null]);
+  assert.deepEqual(JSON.parse(r.stdout.trim()), ['roofr', 'acme', 'roofr', 'roofr', null, null, null]);
   const quiet = run('after-build.mjs', bash('npm run apidocs -- inspect jobs/x.jsonl'), process.cwd());
   assert.equal(quiet.status, 0);
   assert.equal(quiet.stdout, '');

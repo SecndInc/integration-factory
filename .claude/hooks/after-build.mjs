@@ -12,10 +12,11 @@ const root = process.env.CLAUDE_PROJECT_DIR || process.cwd();
 export function siteOf(command) {
   const cmd = String(command || '');
   const build = /apidocs(?:-cli(?:\.ts)?)?\s+(?:--\s+)?build\s+(\S+)/.exec(cmd);
-  if (build) return build[1];
   const tour = /apidocs-readonly-tour(?:\.ts)?\s+(\S+)/.exec(cmd) ?? /apidocs:tour\s+(?:--\s+)?(\S+)/.exec(cmd);
-  if (tour && !tour[1].startsWith('--')) return tour[1];
-  return null;
+  const word = build?.[1] ?? tour?.[1];
+  // A site id is one word: a path, a source file, a placeholder or a shell token after the command is not a site
+  // (`wc -l scripts/... src/x.ts`, `... | head`, `build <site>` quoted in a doc).
+  return word !== undefined && /^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(word) ? word : null;
 }
 
 async function main() {
