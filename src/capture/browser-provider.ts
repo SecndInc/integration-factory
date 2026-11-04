@@ -12,6 +12,7 @@
 
 import { chromium, type Browser } from 'playwright';
 import net from 'node:net';
+import { CaptureError } from '../apidocs/errors.js';
 import type { ProxyConfig } from './proxy.js';
 
 export interface BrowserHandle {
@@ -97,11 +98,67 @@ export class BrowserbaseProvider implements BrowserProvider {
 export class AttachedBrowserProvider implements BrowserProvider {
   readonly kind = 'attached';
   constructor(private readonly cdpUrl: string) {}
+
+  /**
+   * `ws://`/`wss://` is returned as is. `http(s)://host:port` is asked for `/json/version` and its
+   * `webSocketDebuggerUrl` is returned. Drivers that record without Playwright call this alone.
+   */
+  static async resolveWebSocketUrl(cdpUrl: string): Promise<string> {
+    if (/^wss?:\/\//i.test(cdpUrl)) return cdpUrl;
+    let base: URL;
+    try {
+      base = new URL(cdpUrl);
+    } catch {
+      throw new CaptureError('browser-unreachable', `not a usable CDP address: ${cdpUrl}`, attachFix);
+    }
+    if (base.protocol !== 'http:' && base.protocol !== 'https:') {
+      throw new CaptureError('browser-unreachable', `not a usable CDP address: ${cdpUrl}`, attachFix);
+    }
+    const versionUrl = new URL('/json/version', base).toString();
+    try {
+      const res = await fetch(versionUrl, { signal: AbortSignal.timeout(attachProbeTimeoutMs) });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const body = (await res.json()) as { webSocketDebuggerUrl?: unknown };
+      if (typeof body.webSocketDebuggerUrl !== 'string' || !body.webSocketDebuggerUrl) {
+        throw new Error('no webSocketDebuggerUrl in the response');
+      }
+      return body.webSocketDebuggerUrl;
+    } catch (error) {
+      throw new CaptureError(
+        'browser-unreachable',
+        `could not read ${versionUrl}: ${error instanceof Error ? error.message : String(error)}`,
+        attachFix,
+      );
+    }
+  }
+
+  /**
+   * Returns a Playwright handle on the person's Chrome. `dispose` calls `browser.close()`, which on a
+   * connectOverCDP browser clears the contexts Playwright created and disconnects; it does not quit Chrome
+   * (types.d.ts, Browser.close: "In case this browser is connected to, clears all created contexts ... and disconnects").
+   */
   async connect(): Promise<BrowserHandle> {
-    void this.cdpUrl;
-    throw new Error('not implemented');
+    const wsUrl = await AttachedBrowserProvider.resolveWebSocketUrl(this.cdpUrl);
+    let browser: Browser;
+    try {
+      browser = await chromium.connectOverCDP(wsUrl, { timeout: attachProbeTimeoutMs });
+    } catch (error) {
+      throw new CaptureError(
+        'browser-unreachable',
+        `could not attach to ${wsUrl}: ${error instanceof Error ? error.message : String(error)}`,
+        attachFix,
+      );
+    }
+    return { browser, cdpUrl: wsUrl, dispose: async () => void (await browser.close()) };
   }
 }
+
+/** Bound on each attach probe; a Chrome that is listening answers in milliseconds. */
+const attachProbeTimeoutMs = 5_000;
+const attachFix =
+  'Start Chrome on a copy of your profile: chrome --remote-debugging-port=9222 --user-data-dir=<a copy of your profile folder>. ' +
+  'Chrome 136 and later ignore --remote-debugging-port on the default profile folder, so copy it first. ' +
+  'Then pass --attach http://127.0.0.1:9222 (or the ws:// URL from http://127.0.0.1:9222/json/version).';
 
 async function availableLoopbackPort(): Promise<number> {
   return await new Promise<number>((resolve, reject) => {
