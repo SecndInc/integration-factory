@@ -37,4 +37,4 @@
 {"kind":"step","seq":36,"at":"2026-11-03T19:12:20.000Z","phase":"end","id":"publish","index":1,"outcome":"ok"}
 {"kind":"cdp","seq":37,"at":"2026-11-03T19:12:20.100Z","sessionId":"S1","method":"Network.loadingFinished","params":{"requestId":"r2",
 {"kind":"target","seq":38,"at":"2026-11-03T19:12:20.500Z","event":"detached","sessionId":"S2","targetId":"T2","type":"page","url":"https://app.example.com/preview"}
-{"kind":"end","seq":39,"at":"2026-11-03T19:12:21.000Z","reason":"closed","outcome":"completed","counts":{"targets":2,"exchanges":10,"inScope":9,"bodies":{"ok":1,"skipped":1,"evicted":1,"tooLarge":0,"error":0},"attribution":{"inStep":7,"betweenSteps":1,"beforeFirstStep":1,"orphanEvents":1},"inflightAtEnd":0}}
+{"kind":"end","seq":39,"at":"2026-11-03T19:12:21.000Z","reason":"closed","outcome":"completed","counts":{"targets":2,"exchanges":10,"inScope":9,"bodies":{"ok":1,"skipped":1,"evicted":1,"tooLarge":0,"error":3},"attribution":{"inStep":7,"betweenSteps":1,"beforeFirstStep":1,"orphanEvents":1},"inflightAtEnd":0}}

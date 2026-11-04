@@ -50,7 +50,7 @@ test('readTrace keeps the bad line, reports no truncated tail', async () => {
   assert.equal(r.lines.length, 40);
   const bad = r.lines.filter((l) => l.kind === 'bad');
   assert.equal(bad.length, 1);
-  assert.equal(bad[0]!.kind === 'bad' && bad[0]!.seq, 38); // unparseable: its file line number
+  assert.equal(bad[0]!.kind === 'bad' && bad[0]!.seq, -38); // unparseable: its file line number
   assert.equal(r.lines[0]!.kind, 'run');
 });
 
@@ -132,7 +132,8 @@ test('assemble: run, outcome, completeness, targets', async () => {
 test('assemble: attribution by file order', async () => {
   const t = await fixtureTrace();
   assert.deepEqual(t.setupExchangeIds, ['S1:r1:0']);
-  assert.deepEqual(t.outsideExchangeIds, ['S1:r3:0', 'S1:r7:0']);
+  assert.deepEqual(t.outsideExchangeIds, ['S1:r3:0']);
+  assert.equal(t.outsideExchangeIds.length, t.counts.attribution.betweenSteps); // no after-last-end exchange in this fixture
   assert.deepEqual(
     t.steps.map((s) => [s.id, s.index, s.outcome, s.exchangeIds]),
     [
@@ -239,11 +240,13 @@ test('assemble: failed, in-flight and aborted outcomes', async () => {
   assert.equal(popup.response?.status, 200);
 });
 
-test('assemble: out-of-scope host is kept but listed as outside', async () => {
+test('assemble: out-of-scope host stays in exchanges only, in no list and no count', async () => {
   const t = await fixtureTrace();
   const ex = exchange(t, 'S1:r7:0');
   assert.equal(ex.request.host, 'tracker.analytics-example.net');
-  assert.ok(t.outsideExchangeIds.includes(ex.id));
+  assert.equal(ex.stepId, undefined);
+  assert.ok(!t.outsideExchangeIds.includes(ex.id));
+  assert.ok(!t.setupExchangeIds.includes(ex.id));
   assert.ok(!t.steps.some((s) => s.exchangeIds.includes(ex.id)));
 });
 
@@ -350,6 +353,38 @@ test('assemble: WebSocket frames past the budget are counted, not stored', () =>
   assert.equal(t.exchanges[0]!.ws?.framesDropped, 2);
 });
 
+test('assemble: outsideExchangeIds = between steps + after the last end, equal to the betweenSteps count', () => {
+  const step = (phase: 'begin' | 'end', id: string): TraceLine => ({ kind: 'step', seq: ++seq, at: T, phase, id: id as never, index: 0, ...(phase === 'end' ? { outcome: 'ok' as const } : {}) });
+  const t = assemble(
+    input(
+      step('begin', 's'), rws('in'), step('end', 's'),
+      rws('between'), rws('elsewhere', 'https://other.test/x'),
+    ),
+  );
+  assert.deepEqual(t.outsideExchangeIds, ['S9:between:0']);
+  assert.equal(t.outsideExchangeIds.length, t.counts.attribution.betweenSteps);
+  assert.equal(t.exchanges.length, 3);
+});
+
+test('assemble: shuffled lines give identical output', async () => {
+  const r = await readTrace(fixture);
+  const expected = assemble(r);
+  const [run, ...rest] = r.lines;
+  // Deterministic shuffles: reversed, and a stride permutation (7 is coprime with the 39 remaining lines).
+  const reversed = [run!, ...[...rest].reverse()];
+  const stride = [run!, ...rest.map((_, i) => rest[(i * 7) % rest.length]!)];
+  assert.equal(new Set(stride).size, r.lines.length, 'stride must be a permutation');
+  for (const lines of [reversed, stride]) {
+    assert.deepEqual(assemble({ lines, truncatedTail: false }), expected);
+  }
+});
+
+test('assemble: two lines with the same seq are trace-unreadable', async () => {
+  const r = await readTrace(fixture);
+  const dup = r.lines.find((l) => l.kind === 'cdp')!;
+  assert.throws(() => assemble({ lines: [...r.lines, dup], truncatedTail: false }), (e: unknown) => e instanceof CaptureError && e.code === 'trace-unreadable');
+});
+
 test('assemble without a run line is trace-unreadable', () => {
   assert.throws(() => assemble({ lines: [], truncatedTail: false }), (e: unknown) => e instanceof CaptureError && e.code === 'trace-unreadable');
 });
@@ -375,6 +410,27 @@ test('tracePathFor builds the layout and creates the directory', async () => {
   const p = tracePathFor(jobs, site, '20261103T191204Z-ab12' as RunId);
   assert.equal(p, path.join(jobs, 'example-app', 'traces', 'trace-20261103T191204Z-ab12.jsonl'));
   assert.ok((await fs.stat(path.dirname(p))).isDirectory());
+});
+
+test('site and runId that could escape jobsDir are rejected before anything is created or deleted', async () => {
+  const parent = await tmpDir();
+  const jobs = path.join(parent, 'jobs');
+  await fs.mkdir(jobs);
+  const unsafe = (e: unknown) => e instanceof CaptureError && e.code === 'workflow-invalid';
+  for (const bad of ['../x', '..', '.', 'a/b', 'a\\b', '', 'x y']) {
+    assert.throws(() => tracePathFor(jobs, bad as SiteId, 'r1' as RunId), unsafe, `site ${bad}`);
+    assert.throws(() => tracePathFor(jobs, site, bad as RunId), unsafe, `runId ${bad}`);
+    await assert.rejects(listTraces(jobs, bad as SiteId), unsafe);
+    await assert.rejects(pruneTraces(jobs, bad as SiteId), unsafe);
+  }
+  // The victim sits where '../x' would have pointed; it must survive.
+  const victim = path.join(parent, 'x', 'traces');
+  await fs.mkdir(victim, { recursive: true });
+  const file = path.join(victim, 'trace-old.jsonl');
+  await fs.writeFile(file, '');
+  await assert.rejects(pruneTraces(jobs, '../x' as SiteId, new Date('2100-01-01')), unsafe);
+  await fs.stat(file);
+  assert.deepEqual(await fs.readdir(jobs), []);
 });
 
 test('listTraces returns trace files oldest first; empty when the directory is missing', async () => {

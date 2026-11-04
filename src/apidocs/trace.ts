@@ -139,18 +139,21 @@ function seqOf(json: unknown): number | undefined {
   return undefined;
 }
 
-/** `seq` is the line's own when it carried one, else its 1-based line number in the file. */
+/**
+ * BadLine.seq convention: the line's own `seq` when its JSON parsed and carried one; otherwise
+ * `-lineNo` (negative, 1-based file line), which can never collide with a writer `seq`.
+ */
 function parseLine(raw: string, lineNo: number): TraceLine | BadLine {
   let json: unknown;
   try {
     json = JSON.parse(raw);
   } catch (e) {
-    return { kind: 'bad', seq: lineNo, raw, error: `not JSON: ${(e as Error).message}` };
+    return { kind: 'bad', seq: -lineNo, raw, error: `not JSON: ${(e as Error).message}` };
   }
   const parsed = TraceLineSchema.safeParse(json);
   if (parsed.success) return parsed.data;
   const error = parsed.error.issues.map((i) => `${i.path.join('.') || '(line)'}: ${i.message}`).join('; ');
-  return { kind: 'bad', seq: seqOf(json) ?? lineNo, raw, error };
+  return { kind: 'bad', seq: seqOf(json) ?? -lineNo, raw, error };
 }
 
 /** The first line must be a run line of a known version; anything else means this is not a trace. */
@@ -216,8 +219,17 @@ export async function readTrace(path: string): Promise<ReadTraceResult> {
   return { lines, truncatedTail };
 }
 
-/** `<jobsDir>/<site>/traces/trace-<runId>.jsonl`. Creates the directory. */
+/** A site or run id becomes a path segment, so it may not hold a separator or be `.`/`..`. */
+function assertSegment(kind: string, value: string): void {
+  if (!/^[A-Za-z0-9._-]+$/.test(value) || value === '.' || value === '..') {
+    throw new CaptureError('workflow-invalid', `${kind} ${JSON.stringify(value)} is not a safe path segment`, 'Use letters, digits, dot, dash and underscore only.');
+  }
+}
+
+/** `<jobsDir>/<site>/traces/trace-<runId>.jsonl`. Creates the directory. Rejects an unsafe site or runId. */
 export function tracePathFor(jobsDir: string, site: SiteId, runId: RunId): string {
+  assertSegment('site', site);
+  assertSegment('runId', runId);
   const dir = path.join(jobsDir, site, 'traces');
   mkdirSync(dir, { recursive: true });
   return path.join(dir, `trace-${runId}.jsonl`);
@@ -231,6 +243,7 @@ export function newRunId(now: Date = new Date()): RunId {
 
 /** Every trace path under `<jobsDir>/<site>/traces`, oldest first (run ids sort by start time). */
 export async function listTraces(jobsDir: string, site: SiteId): Promise<string[]> {
+  assertSegment('site', site);
   const dir = path.join(jobsDir, site, 'traces');
   let names: string[];
   try {
@@ -263,6 +276,7 @@ const msPerDay = 24 * 60 * 60 * 1e3;
 
 /** Deletes traces whose run line startedAt is older than traceRetentionDays. Returns the paths removed. */
 export async function pruneTraces(jobsDir: string, site: SiteId, now: Date = new Date()): Promise<string[]> {
+  assertSegment('site', site);
   const cutoff = now.getTime() - traceRetentionDays * msPerDay;
   const removed: string[] = [];
   for (const file of await listTraces(jobsDir, site)) {
@@ -420,8 +434,12 @@ function pickBody(lines: readonly BodyLine[], side: 'request' | 'response'): Bod
  *  - complete = end line present and !truncatedTail; outcome from the end line, else 'interrupted'
  *
  * Choices the invariants leave open:
- *  - Exchanges on hosts outside run.scope.hosts are kept in `exchanges` and listed in outsideExchangeIds;
- *    they never get a stepId and are not counted in `counts.attribution` or `counts.bodies`.
+ *  - Lines are folded in stable `seq` order, whatever order they arrive in; two lines with the same `seq`
+ *    throw CaptureError('trace-unreadable'). Bad lines (see parseLine for their negative seq) are carried
+ *    in badLines, sorted by seq, and never folded.
+ *  - Exchanges on hosts outside run.scope.hosts are kept in `exchanges` only: no stepId, not in
+ *    outsideExchangeIds (that list is between-steps and after-last-end, so its length equals
+ *    counts.attribution.betweenSteps), and not counted in `counts.attribution` or `counts.bodies`.
  *  - An exchange that ended (completed, failed or aborted) with a response but no usable body line is 'lost',
  *    counted under counts.bodies.error because Counts has no `lost` field.
  *  - `counts` is always the fold's; the end line's own counts are not carried (Trace has no field for them).
@@ -526,9 +544,8 @@ export function assemble(input: ReadTraceResult): Trace {
       pendingReqExtra.delete(key);
     }
 
-    if (!inScope(u.host, run.scope.hosts)) {
-      outsideIds.push(ex.id);
-    } else {
+    // Out-of-scope hosts stay in `exchanges` only: no stepId, no list, no attribution count.
+    if (inScope(u.host, run.scope.hosts)) {
       hop.attributedInScope = true;
       if (phase === 'before') {
         setupIds.push(ex.id);
@@ -548,13 +565,20 @@ export function assemble(input: ReadTraceResult): Trace {
     return hop;
   };
 
-  for (const line of input.lines) {
+  const foldable: Exclude<TraceLine, RunLine>[] = [];
+  for (const l of input.lines) {
+    if (l.kind === 'bad') badLines.push(l);
+    else if (l.kind !== 'run') foldable.push(l);
+  }
+  foldable.sort((a, b) => a.seq - b.seq); // Array.prototype.sort is stable
+  for (let i = 1; i < foldable.length; i++) {
+    if (foldable[i]!.seq === foldable[i - 1]!.seq) {
+      throw new CaptureError('trace-unreadable', `two trace lines share seq ${foldable[i]!.seq}`, 'The file was written by two writers or edited; record again.');
+    }
+  }
+
+  for (const line of foldable) {
     switch (line.kind) {
-      case 'bad':
-        badLines.push(line);
-        break;
-      case 'run':
-        break;
       case 'end':
         endLine = line;
         break;
@@ -793,6 +817,8 @@ export function assemble(input: ReadTraceResult): Trace {
     else if (state === 'too-large') counts.bodies.tooLarge++;
     else if (state === 'lost') counts.bodies.error++;
   }
+
+  badLines.sort((a, b) => a.seq - b.seq || (a.raw < b.raw ? -1 : a.raw > b.raw ? 1 : 0));
 
   const complete = endLine !== undefined && !input.truncatedTail;
   const trace: Trace = {
