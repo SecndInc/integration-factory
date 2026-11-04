@@ -88,6 +88,21 @@ export class BrowserbaseProvider implements BrowserProvider {
   }
 }
 
+/**
+ * A Chrome the person started themselves with --remote-debugging-port (on a copied profile, since
+ * Chrome 136 refuses remote debugging on the default one). connectOverCDP gives a driver a page in
+ * their profile; dispose disconnects and never closes their browser. Not for defeating bot
+ * detection: it is the person's own session, recorded. Design: docs/design/api-docs.md §4, §7.
+ */
+export class AttachedBrowserProvider implements BrowserProvider {
+  readonly kind = 'attached';
+  constructor(private readonly cdpUrl: string) {}
+  async connect(): Promise<BrowserHandle> {
+    void this.cdpUrl;
+    throw new Error('not implemented');
+  }
+}
+
 async function availableLoopbackPort(): Promise<number> {
   return await new Promise<number>((resolve, reject) => {
     const server = net.createServer();

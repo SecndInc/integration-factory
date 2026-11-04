@@ -16,10 +16,12 @@
     "capture": "tsx src/capture-cli.ts",
     "visual:smoke": "tsx scripts/visual-adviser-smoke.ts",
     "test": "node --import tsx --test \"test/**/*.test.ts\"",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "apidocs": "tsx src/apidocs-cli.ts"
   },
   "dependencies": {
-    "playwright": "^1.48.0"
+    "playwright": "^1.48.0",
+    "zod": "^4.6.7"
   },
   "optionalDependencies": {
     "imapflow": "^1.0.171"
