@@ -1,0 +1,24 @@
+{
+  "site": "yp-for-business",
+  "scannedAt": "2026-11-05T16:58:18.256Z",
+  "docsDir": "docs\\apis\\yp-for-business",
+  "trace": "jobs\\yp-for-business\\traces\\trace-20261104T214824Z-f674.jsonl",
+  "hash": "5d20a76f78fc48dd57751fad64e5448c6d1c0743a70cea94cdbbb57b6ce09303",
+  "verdict": "pass",
+  "secrets": {
+    "candidates": 31,
+    "hits": []
+  },
+  "pii": {
+    "hits": 0,
+    "fields": []
+  },
+  "sizes": {
+    "README.md": 781301,
+    "api.json": 1479684,
+    "index.html": 1162573,
+    "openapi.json": 1521762
+  },
+  "oversize": [],
+  "noise": []
+}

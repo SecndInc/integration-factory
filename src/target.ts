@@ -28,6 +28,12 @@ export interface IntegrationTarget {
   plan?: string;
   /** Informational: API docs URL for API-first targets. */
   docsUrl?: string;
+  /**
+   * Body, header, cookie and query key names (case-insensitive, exact) whose values never reach the
+   * rendered API docs; an object or array under such a key is redacted whole. The review scan lists the
+   * key paths that need this. Merged with `apidocs build --redact-key`.
+   */
+  redactKeys?: string[];
 }
 
 export interface ResolvedTarget extends IntegrationTarget {
@@ -38,6 +44,9 @@ export interface ResolvedTarget extends IntegrationTarget {
 
 export function resolveTarget(raw: IntegrationTarget): ResolvedTarget {
   if (!raw.name) throw new Error('target.name is required');
+  if (raw.redactKeys !== undefined && (!Array.isArray(raw.redactKeys) || raw.redactKeys.some((k) => typeof k !== 'string' || k.trim() === ''))) {
+    throw new Error('target.redactKeys must be an array of non-empty strings');
+  }
   const parsed = parseHttpUrl(raw.startUrl, 'target.startUrl');
   const loginUrl = raw.loginUrl ? parseHttpUrl(raw.loginUrl, 'target.loginUrl').toString() : parsed.toString();
   return {

@@ -1,0 +1,143 @@
+{
+  "workflowVersion": 1,
+  "id": "readonly-tour",
+  "name": "Read-only tour",
+  "goal": "Open the signed-in start page, every read-only navigation link it shows, and a few of the items on each page.",
+  "effect": "read",
+  "preconditions": [
+    "signed in"
+  ],
+  "inputs": [],
+  "steps": [
+    {
+      "id": "open-start",
+      "do": "Open https://ypforbusiness.yellowpages.ca/",
+      "hints": [
+        "https://ypforbusiness.yellowpages.ca/"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "open-2",
+      "do": "Open VISIBILITY AND REPUTATION",
+      "hints": [
+        "https://ypforbusiness.yellowpages.ca/reviews/overview"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "open-3",
+      "do": "Open DASHBOARD",
+      "hints": [
+        "https://ypforbusiness.yellowpages.ca/dashboard"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "open-4",
+      "do": "Open CONTENT",
+      "hints": [
+        "https://ypforbusiness.yellowpages.ca/content-manager"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "open-5",
+      "do": "Open WEBSITE MANAGER",
+      "hints": [
+        "https://ypforbusiness.yellowpages.ca/content-manager/website-manager/overview"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "open-6",
+      "do": "Open YP.CA REVIEWS",
+      "hints": [
+        "https://ypforbusiness.yellowpages.ca/reviews-ratings-tabs"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "open-7",
+      "do": "Open SETTINGS",
+      "hints": [
+        "https://ypforbusiness.yellowpages.ca/settings"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "open-8",
+      "do": "Open Manage my online visibility",
+      "hints": [
+        "https://ypforbusiness.yellowpages.ca/reviews"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "open-9",
+      "do": "Open Manage my Website",
+      "hints": [
+        "https://ypforbusiness.yellowpages.ca/content-manager/website-manager"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "open-10",
+      "do": "Open Manage my logo",
+      "hints": [
+        "https://ypforbusiness.yellowpages.ca/content-manager/media"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "open-11",
+      "do": "Open YP METRICS",
+      "hints": [
+        "https://ypforbusiness.yellowpages.ca/analytics"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "open-12",
+      "do": "Open Personal Settings",
+      "hints": [
+        "https://ypforbusiness.yellowpages.ca/settings/personal"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    },
+    {
+      "id": "open-13",
+      "do": "Open User Access Management",
+      "hints": [
+        "https://ypforbusiness.yellowpages.ca/settings/user"
+      ],
+      "expect": "network",
+      "uses": [],
+      "confirms": []
+    }
+  ]
+}

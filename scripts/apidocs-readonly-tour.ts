@@ -1,6 +1,6 @@
 // Read-only tour of a signed-in web app through the person's own Chrome, recorded as one apidocs run.
 //
-//   npx tsx scripts/apidocs-readonly-tour.ts <target> [--port 9222] [--max 12] [--items 3] [--jobs jobs] [--out docs/apis]
+//   npx tsx scripts/apidocs-readonly-tour.ts <target> [--port 9222] [--max 12] [--items 3] [--host <h>]... [--hold-bodies] [--jobs jobs] [--out docs/apis]
 //
 // The person starts Chrome with --remote-debugging-port on a dedicated profile and signs in. This script
 // attaches the recorder to that Chrome (browser-level CDP), drives the existing tab with Playwright over the
@@ -43,6 +43,10 @@ export interface TourOptions {
   max: number;
   /** Items opened per page. */
   items: number;
+  /** Hosts besides target.host whose bodies the recorder keeps (an API on another domain); suffix match. */
+  extraHosts?: string[];
+  /** Hold responses until their body is read (bodies.evicted in the counts says when a run needs it). */
+  holdBodies?: boolean;
   jobsDir: string;
   outRoot: string;
   workflowsDir: string;
@@ -148,8 +152,35 @@ function flag(argv: string[], name: string, fallback: string): string {
   return i >= 0 && argv[i + 1] !== undefined ? argv[i + 1]! : fallback;
 }
 
+/** Every value of a repeatable flag, in order. */
+function flagList(argv: string[], name: string): string[] {
+  const out: string[] = [];
+  argv.forEach((a, i) => {
+    if (a === `--${name}` && argv[i + 1] !== undefined) out.push(argv[i + 1]!);
+  });
+  return out;
+}
+
 async function settle(page: Page): Promise<void> {
   await page.waitForLoadState('networkidle', { timeout: settleCapMs }).catch(() => undefined);
+}
+
+/** Runs in the page: every same-host anchor (origin + path, first text seen), minus the root and fragment links. */
+function collectNavigationLinks(host: string): { href: string; text: string }[] {
+  const seen = new Map<string, string>();
+  for (const a of Array.from(document.querySelectorAll('a[href]'))) {
+    const href = (a as HTMLAnchorElement).href;
+    const text = (a.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60);
+    let u: URL;
+    try {
+      u = new URL(href);
+    } catch {
+      continue;
+    }
+    if (u.hostname !== host || u.hash || u.pathname === '/') continue;
+    if (!seen.has(u.origin + u.pathname)) seen.set(u.origin + u.pathname, text);
+  }
+  return Array.from(seen, ([href, text]) => ({ href, text }));
 }
 
 export async function runTour(opts: TourOptions): Promise<TourResult> {
@@ -174,7 +205,8 @@ export async function runTour(opts: TourOptions): Promise<TourResult> {
     driver: 'playwright',
     workflowId,
     browserKind: 'attached',
-    scope: { hosts: [target.host] },
+    scope: { hosts: [target.host, ...(opts.extraHosts ?? [])] },
+    bodies: { hold: opts.holdBodies ?? false },
     log,
   });
 
@@ -266,22 +298,7 @@ export async function runTour(opts: TourOptions): Promise<TourResult> {
       throw new Error(`not signed in: the start page landed on ${after}. Sign in in the Chrome window and rerun.`);
     }
 
-    const links = await page.evaluate((host: string) => {
-      const seen = new Map<string, string>();
-      for (const a of Array.from(document.querySelectorAll('a[href]'))) {
-        const href = (a as HTMLAnchorElement).href;
-        const text = (a.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 60);
-        let u: URL;
-        try {
-          u = new URL(href);
-        } catch {
-          continue;
-        }
-        if (u.hostname !== host || u.hash || u.pathname === '/') continue;
-        if (!seen.has(u.origin + u.pathname)) seen.set(u.origin + u.pathname, text);
-      }
-      return Array.from(seen, ([href, text]) => ({ href, text }));
-    }, startHost);
+    const links = await page.evaluate(collectNavigationLinks, startHost);
     // Navigation is a link with no more record ids than the page the start URL landed on (a root URL redirects
     // to a team page with an id in it); a link with one more is an item of the page it sits on, and
     // probeItems opens it as such.
@@ -294,8 +311,26 @@ export async function runTour(opts: TourOptions): Promise<TourResult> {
     log(`${links.length} same-site links on the start page, ${candidates.length} read-only candidates, up to ${opts.items} items opened per page`);
     for (const l of candidates) log(`  will open ${l.href}  (${l.text || 'no text'})`);
 
+    /** Same filter as the start page, applied to the page just opened: a navigation link the app renders only
+     *  after its data arrives (a metrics tab that waits for the account) is appended once, within --max. */
+    const addLateNavigation = async (): Promise<void> => {
+      if (candidates.length >= opts.max) return;
+      const found = await page.evaluate(collectNavigationLinks, startHost);
+      const known = new Set(navigation);
+      for (const l of found) {
+        if (candidates.length >= opts.max) break;
+        if (known.has(l.href) || denyPattern.test(l.href) || denyPattern.test(l.text) || recordIds(new URL(l.href).pathname) > startIds) continue;
+        candidates.push(l);
+        navigation.push(l.href);
+        known.add(l.href);
+        log(`  will open ${l.href}  (${l.text || 'no text'})  [seen on ${new URL(page.url()).pathname}]`);
+      }
+    };
+
     await probeItems();
-    for (const l of candidates) {
+    await addLateNavigation();
+    for (let c = 0; c < candidates.length; c += 1) {
+      const l = candidates[c]!;
       index += 1;
       const id = nextId('open');
       const text = `Open ${l.text || new URL(l.href).pathname}`;
@@ -305,6 +340,7 @@ export async function runTour(opts: TourOptions): Promise<TourResult> {
         await settle(page);
       });
       steps.push({ id, do: text, url: l.href });
+      await addLateNavigation();
       await probeItems();
     }
   } catch (error) {
@@ -330,7 +366,7 @@ export async function runTour(opts: TourOptions): Promise<TourResult> {
   await fs.writeFile(path.join(opts.workflowsDir, `${workflowId}.json`), `${JSON.stringify(workflow, null, 2)}\n`);
 
   const trace = assemble(await readTrace(tracePath));
-  const doc = derive({ target, workflows: [workflow], traces: [{ path: tracePath, trace }], redaction: emptyRedactionPolicy });
+  const doc = derive({ target, workflows: [workflow], traces: [{ path: tracePath, trace }], redaction: { ...emptyRedactionPolicy, extraKeys: target.redactKeys ?? [] } });
   const rendered = renderApiDoc(doc);
   const outDir = path.join(opts.outRoot, site);
   await fs.mkdir(outDir, { recursive: true });
@@ -361,7 +397,7 @@ export async function runTour(opts: TourOptions): Promise<TourResult> {
 async function main(): Promise<number> {
   const argv = process.argv.slice(2);
   const targetName = argv.find((a, i) => !a.startsWith('--') && !(argv[i - 1] ?? '').startsWith('--'));
-  if (!targetName) throw new Error('usage: apidocs-readonly-tour <target> [--port 9222] [--max 12] [--items 3]');
+  if (!targetName) throw new Error('usage: apidocs-readonly-tour <target> [--port 9222] [--max 12] [--items 3] [--host <h>]... [--hold-bodies]');
   const target = await loadTarget(targetName);
   if (!target) throw new Error(`unknown target ${targetName}; put targets/${targetName}.json in place`);
   const result = await runTour({
@@ -369,6 +405,8 @@ async function main(): Promise<number> {
     port: Number(flag(argv, 'port', '9222')),
     max: Number(flag(argv, 'max', '12')),
     items: Number(flag(argv, 'items', String(tourItemsPerPage))),
+    extraHosts: flagList(argv, 'host'),
+    holdBodies: argv.includes('--hold-bodies'),
     jobsDir: flag(argv, 'jobs', 'jobs'),
     outRoot: flag(argv, 'out', 'docs/apis'),
     workflowsDir: path.join('workflows', siteIdOf(target)),

@@ -591,6 +591,12 @@ test('har writes 2-space JSON to -o, or next to the trace by default', async () 
 
 // ---- build
 
+test('resolveTarget rejects redactKeys that are not non-empty strings', () => {
+  assert.throws(() => resolveTarget({ name: 'x', startUrl: 'https://x.example.com/', redactKeys: ['a', 3] as unknown as string[] }), /redactKeys must be an array of non-empty strings/);
+  assert.throws(() => resolveTarget({ name: 'x', startUrl: 'https://x.example.com/', redactKeys: [''] }), /redactKeys/);
+  assert.deepEqual(resolveTarget({ name: 'x', startUrl: 'https://x.example.com/', redactKeys: ['salesRep'] }).redactKeys, ['salesRep']);
+});
+
 test('build warns about a non-completed latest run, passes redact keys, writes four files atomically', async () => {
   const dir = await tempDir();
   const workflowsDir = path.join(dir, 'workflows');
@@ -599,7 +605,7 @@ test('build warns about a non-completed latest run, passes redact keys, writes f
   await fs.writeFile(path.join(workflowsDir, 'flow.json'), JSON.stringify({ workflowVersion: 1, id: 'demo-flow', name: 'F', goal: 'g', effect: 'read', steps: [{ id: 'one', do: 'x' }] }));
   await fs.writeFile(path.join(workflowsDir, 'other.yaml'), 'id: x');
   const targetFile = path.join(dir, 'demo.json');
-  await fs.writeFile(targetFile, JSON.stringify({ name: 'demo', startUrl: 'https://demo.example.com/' }));
+  await fs.writeFile(targetFile, JSON.stringify({ name: 'demo', startUrl: 'https://demo.example.com/', redactKeys: ['instanceURL', 'X-Tenant'] }));
   const seen: { extraKeys?: readonly string[]; workflows?: number; traces?: number } = {};
   const cap = capture();
   try {
@@ -621,7 +627,7 @@ test('build warns about a non-completed latest run, passes redact keys, writes f
       () => main(['build', targetFile, '--workflows', workflowsDir, '--out', outDir, '--redact-key', 'x-tenant', '--redact-key', 'x-org']),
     );
     assert.equal(code, 0);
-    assert.deepEqual(seen, { extraKeys: ['x-tenant', 'x-org'], workflows: 1, traces: 2 });
+    assert.deepEqual(seen, { extraKeys: ['instanceURL', 'X-Tenant', 'x-org'], workflows: 1, traces: 2 }, 'target redactKeys first, flags after, one entry per key');
     assert.match(cap.text(), /latest run r is failed, not completed/);
     assert.match(cap.text(), /YAML workflows are not read/);
     assert.match(cap.text(), /coverage: steps with exchanges 1\/1/);
