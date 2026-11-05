@@ -3,7 +3,7 @@
 //   record  <target> --workflow <file> [--attach <url> | --headed | --browserbase] [--host <h>]... [--hold-bodies] [--jobs <dir>]
 //   inspect <trace.jsonl> [--step <id>] [--host <h>] [--grep <s>] [--show <exchangeId>] [--raw]
 //   har     <trace.jsonl> [-o <out.har>]
-//   build   <target> [--workflows <dir>] [--jobs <dir>] [--out <dir>] [--redact-key <k>]...
+//   build   <target> [--workflows <dir>] [--jobs <dir>] [--out <dir>] [--redact-key <k>]...   (keys also from target.redactKeys)
 //   mine    <target> [--jobs <dir>]
 //
 // Exit codes: 0 ok, 1 unexpected, 2 environment (browser, attach, every bundle fetch failed), 3 input (spec, trace),
@@ -287,6 +287,19 @@ export async function record(args: ParsedArgs): Promise<number> {
 // ---------------------------------------------------------------------------------------------
 
 
+/** Target redactKeys first, then --redact-key flags; one entry per key, compared case-insensitively. */
+export function mergeRedactKeys(fromTarget: readonly string[] | undefined, fromFlags: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const key of [...(fromTarget ?? []), ...fromFlags]) {
+    const lower = key.toLowerCase();
+    if (seen.has(lower)) continue;
+    seen.add(lower);
+    out.push(key);
+  }
+  return out;
+}
+
 function hostMatches(host: string, wanted: string): boolean {
   return host === wanted || host.endsWith(`.${wanted}`);
 }
@@ -477,7 +490,7 @@ export async function build(args: ParsedArgs): Promise<number> {
     target,
     workflows,
     traces,
-    redaction: { ...emptyRedactionPolicy, extraKeys: flagList(args, 'redact-key') },
+    redaction: { ...emptyRedactionPolicy, extraKeys: mergeRedactKeys(target.redactKeys, flagList(args, 'redact-key')) },
     ...(code ? { code } : {}),
   });
   const rendered = cliDeps.renderApiDoc(doc);

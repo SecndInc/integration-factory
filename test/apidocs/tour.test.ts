@@ -52,7 +52,7 @@ test('the tour opens navigation links, then up to --items items per page, and ma
   await page.goto(site.url);
 
   const lines: string[] = [];
-  const target = targetFromUrl('Fixture', `${site.url}/`);
+  const target = { ...targetFromUrl('Fixture', `${site.url}/`), redactKeys: ['name'] };
   const result = await runTour({
     target,
     port,
@@ -88,4 +88,7 @@ test('the tour opens navigation links, then up to --items items per page, and ma
   const wf = JSON.parse(await fs.readFile(path.join(dir, 'workflows', 'readonly-tour.json'), 'utf8')) as { steps: unknown[] };
   assert.equal(wf.steps.length, 8);
   for (const name of ['README.md', 'api.json', 'index.html', 'openapi.json']) assert.ok(existsSync(path.join(dir, 'docs', 'fixture', name)), name);
+  const apiJson = await fs.readFile(path.join(dir, 'docs', 'fixture', 'api.json'), 'utf8');
+  assert.ok(!/"item 100\d"|"first"/.test(apiJson), 'target.redactKeys ["name"] keeps item names out of the docs the tour writes');
+  assert.match(apiJson, /\{redacted\}/);
 });

@@ -44,8 +44,8 @@ npm run apidocs:scan -- <site>
 | Verdict | Meaning | Next |
 | --- | --- | --- |
 | `pass` | no trace value in the docs, no personal-looking field, sizes in bounds | commit |
-| `needs-review` | fields like `customer.name`, `address`, `phone` carry values, or a file is oversized | a person reads the listed key paths; either `npm run apidocs:scan -- <site> --accept` (recorded with their name) or redaction in `src/apidocs/derive.ts` is extended, rebuild, rescan |
-| `fail` | a cookie, header or token value from the trace reached a page | fix `src/apidocs/redact.ts` or `derive.ts`, add the case to `test/apidocs/redact.test.ts`, rebuild, rescan |
+| `needs-review` | fields like `customer.name`, `address`, `phone` carry values, or a file is oversized | a person reads the listed key paths; either `npm run apidocs:scan -- <site> --accept` (recorded with their name) or the leaf key names (and the parent key of any object whose children carry values) go into `redactKeys` in `targets/<site>.json`, rebuild, rescan. `--redact-key` on `build` is for a one-off trial; the target file is what a rebuild reads |
+| `fail` | a cookie, header or token value from the trace reached a page | when the value sits under a named key (an instance hostname in a settings field), add the key to `redactKeys`; otherwise fix `src/apidocs/redact.ts` or `derive.ts`, add the case to `test/apidocs/redact.test.ts`; rebuild, rescan |
 | exit 3 | docs or api.json missing | build first |
 
 `--accept` is a person's decision; an agent reports `needs-review` and stops. `guard-bash.mjs` refuses `git add docs/apis/<site>` on any other verdict, or when the files changed after the scan.

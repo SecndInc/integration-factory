@@ -366,7 +366,7 @@ export async function runTour(opts: TourOptions): Promise<TourResult> {
   await fs.writeFile(path.join(opts.workflowsDir, `${workflowId}.json`), `${JSON.stringify(workflow, null, 2)}\n`);
 
   const trace = assemble(await readTrace(tracePath));
-  const doc = derive({ target, workflows: [workflow], traces: [{ path: tracePath, trace }], redaction: emptyRedactionPolicy });
+  const doc = derive({ target, workflows: [workflow], traces: [{ path: tracePath, trace }], redaction: { ...emptyRedactionPolicy, extraKeys: target.redactKeys ?? [] } });
   const rendered = renderApiDoc(doc);
   const outDir = path.join(opts.outRoot, site);
   await fs.mkdir(outDir, { recursive: true });

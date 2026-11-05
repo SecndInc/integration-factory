@@ -15,13 +15,15 @@ Outcome of this stage: `targets/<site>.json` exists, a Chrome on `jobs/<site>/ch
   "name": "Roofr",
   "startUrl": "https://app.roofr.com/",
   "host": "roofr.com",
-  "environment": "production"
+  "environment": "production",
+  "redactKeys": ["firstName", "lastName", "phone", "address"]
 }
 ```
 
 - `name` becomes the site id (kebab-case): `Roofr` is `roofr`, which names `jobs/roofr`, `workflows/roofr`, `docs/apis/roofr`.
 - `startUrl` is the signed-in landing page, not the marketing site. The tour starts there and reads its navigation links.
 - `host` is the registrable domain, so `api.` and `app.` subdomains both count as first party. Leave it out only when `startUrl` is already on the bare domain.
+- `redactKeys` lists body, header, cookie or query key names whose values never reach the docs (case-insensitive; an object under such a key is redacted whole). Start empty; the review scan in `/apidocs-build` prints the key paths to add, and the build reads them without flags.
 - `environment` is `production` unless the account is yours: `staging`, `test` or `sandbox` unlock write workflows. Writing it explicitly is the point, even for production.
 
 The fixture (`npm run apidocs:fixture`) prints its URL; a fixture target uses that URL and `"environment": "test"`.

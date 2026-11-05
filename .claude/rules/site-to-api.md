@@ -16,7 +16,7 @@ Turning a web app into documented API endpoints is six stages. Each has one comm
 - `src/apidocs/`: recorder, trace fold, derive, redact, renderers, `noise.ts` (tracker cookies and asset paths), `mine.ts` (API paths and enums out of bundle text). Limits are named in `src/apidocs/limits.ts`; nothing else holds a magic number.
 - `src/apidocs-cli.ts`: `record | inspect | har | mine | build`. Exit codes: 0 ok, 1 usage or unexpected, 2 browser unreachable, 3 trace unreadable, 4 run failed.
 - `scripts/apidocs-*.ts`: entry points a person or agent runs (`chrome`, `readonly-tour`, `docs-scan`, `fixture-site`).
-- `targets/<site>.json`: `name`, `startUrl`, optional `host`, `environment`.
+- `targets/<site>.json`: `name`, `startUrl`, optional `host`, `environment`, `redactKeys` (key names the scan flagged; their values never reach the docs).
 - `workflows/<site>/`: committed. `jobs/<site>/`: never committed. `docs/apis/<site>/`: committed after review.
 - Design: `docs/design/api-docs.md` (pipeline, data shapes, §9 layout), `docs/design/agent-guidance.md` (this package).
 

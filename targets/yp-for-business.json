@@ -2,5 +2,20 @@
   "name": "YP for Business",
   "startUrl": "https://ypforbusiness.yellowpages.ca/",
   "host": "yellowpages.ca",
-  "environment": "production"
+  "environment": "production",
+  "redactKeys": [
+    "instanceURL",
+    "firstName",
+    "lastName",
+    "first_name",
+    "last_name",
+    "display_name",
+    "phone",
+    "address",
+    "addressLine",
+    "accountNumber",
+    "salesRep",
+    "contacts",
+    "billingInfo"
+  ]
 }
