@@ -45,6 +45,11 @@ type Paginator =
   | { kind: 'cursor'; cursorParam; nextPath; perPageParam?; perPage? }
   | { kind: 'datatables'; pageParam; length?; totalPath; recordsPath };
 type QueryValue = string | number | boolean | { fromId: string } | { fromRange: 'start' | 'end' | 'pipe' } | { computed: 'uuid' } | { fromValue: string };
+type RangeFormat =
+  | 'iso-date'          // 2026-01-01
+  | 'iso-datetime'      // 2026-01-01T00:00:00 / 2026-01-31T23:59:59
+  | 'sql-datetime'      // 2026-01-01 00:00:00 / 2026-01-31 23:59:59 (Roofr calendar: the T form answered 422 on 2026-11-06)
+  | 'daterange-pipe';   // 2026-01-01|2026-01-31
 ```
 
 An `EndpointPlan` has `id` (slug, unique, the NDJSON file name and BigQuery `endpoint_id`), optional `docId` (the id in `docs/apis/<site>/api.json`), `origin`, `method: 'GET'`, `path` (may contain `{param}`), `query`, `pathParams`, `headers` (names from `plan.headers`), `paginator`, `records`, `total`, `range`, `group`, `perId` (`core` or `full`; core is a subset of full), `expect404`, `skip`, `yields` (id name to JSON path) and `dependsOn`. The plan has `planVersion: 1`, `site`, `origins`, `tabFor`, `loginPaths`, `probe` (one per origin used), `headers`, optional `values`, `ids`, optional `widgetRules` and `endpoints`.

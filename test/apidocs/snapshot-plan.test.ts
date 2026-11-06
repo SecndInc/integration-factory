@@ -178,11 +178,14 @@ test('monthRanges: 24 gapless UTC windows 2024-12..2026-11, the last ending toda
   assert.equal(monthRanges(new Date('2028-03-15T00:00:00Z'), 2)[0]!.end, '2028-02-29');
 });
 
-test('rangeValue formats iso-date, iso-datetime and daterange-pipe', () => {
+test('rangeValue formats iso-date, iso-datetime, sql-datetime and daterange-pipe', () => {
   const r = { key: '2026-01', start: '2026-01-01', end: '2026-01-31' };
   assert.equal(rangeValue({ format: 'iso-date' }, r, 'start'), '2026-01-01');
   assert.equal(rangeValue({ format: 'iso-datetime' }, r, 'start'), '2026-01-01T00:00:00');
   assert.equal(rangeValue({ format: 'iso-datetime' }, r, 'end'), '2026-01-31T23:59:59');
+  assert.equal(rangeValue({ format: 'sql-datetime' }, r, 'start'), '2026-01-01 00:00:00');
+  assert.equal(rangeValue({ format: 'sql-datetime' }, r, 'end'), '2026-01-31 23:59:59');
+  assert.equal(rangeValue({ format: 'sql-datetime' }, r, 'pipe'), '2026-01-01 00:00:00|2026-01-31 23:59:59');
   assert.equal(rangeValue({ format: 'daterange-pipe' }, r, 'start'), '2026-01-01|2026-01-31');
   assert.equal(rangeValue({ format: 'iso-date' }, r, 'pipe'), '2026-01-01|2026-01-31');
 });

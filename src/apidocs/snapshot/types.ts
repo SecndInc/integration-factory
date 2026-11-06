@@ -45,7 +45,7 @@ export const RangeSchema = z.strictObject({
   param: z.string().optional(),
   startParam: z.string().optional(),
   endParam: z.string().optional(),
-  format: z.enum(['iso-date', 'iso-datetime', 'daterange-pipe']),
+  format: z.enum(['iso-date', 'iso-datetime', 'sql-datetime', 'daterange-pipe']),
 });
 export type RangeSpec = z.infer<typeof RangeSchema>;
 

@@ -131,7 +131,9 @@ export function monthRanges(now: Date, months: number): MonthRange[] {
 /** One value of a window in the endpoint's range format. `daterange-pipe` is always "start|end". */
 export function rangeValue(range: Pick<RangeSpec, 'format'>, r: MonthRange, which: 'start' | 'end' | 'pipe'): string {
   if (range.format === 'daterange-pipe') return `${r.start}|${r.end}`;
-  const fmt = (d: string, edge: 'start' | 'end') => (range.format === 'iso-datetime' ? `${d}T${edge === 'start' ? '00:00:00' : '23:59:59'}` : d);
+  const time = (edge: 'start' | 'end') => (edge === 'start' ? '00:00:00' : '23:59:59');
+  const fmt = (d: string, edge: 'start' | 'end') =>
+    range.format === 'iso-datetime' ? `${d}T${time(edge)}` : range.format === 'sql-datetime' ? `${d} ${time(edge)}` : d;
   if (which === 'start') return fmt(r.start, 'start');
   if (which === 'end') return fmt(r.end, 'end');
   return `${fmt(r.start, 'start')}|${fmt(r.end, 'end')}`;

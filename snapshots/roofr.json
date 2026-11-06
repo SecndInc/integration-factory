@@ -1031,6 +1031,7 @@
     {
       "id": "calendar-events-past",
       "docId": "GET app.roofr.com/api/calendar/event/past",
+      "skip": "the page calls it only with context_type and context_id (one job or contact); without them it answered 403 on 2026-11-06. Events come through calendar-events by month",
       "origin": "app",
       "method": "GET",
       "path": "/api/calendar/event/past",
@@ -1053,6 +1054,7 @@
     {
       "id": "calendar-events-upcoming",
       "docId": "GET app.roofr.com/api/calendar/event/upcoming",
+      "skip": "the page calls it only with context_type and context_id (one job or contact); without them it answered 403 on 2026-11-06. Events come through calendar-events by month",
       "origin": "app",
       "method": "GET",
       "path": "/api/calendar/event/upcoming",
@@ -1120,16 +1122,16 @@
       "origin": "app",
       "method": "GET",
       "path": "/api/leads/sources",
+      "query": {
+        "per_page": 500
+      },
       "headers": [
         "x-requested-with",
         "x-xsrf-token",
         "team-id"
       ],
       "paginator": {
-        "kind": "laravel-meta",
-        "pageParam": "page",
-        "perPageParam": "per_page",
-        "perPage": 50
+        "kind": "none"
       },
       "records": "$.data",
       "group": "lists"
@@ -1442,7 +1444,7 @@
       },
       "records": "$.data",
       "range": {
-        "format": "iso-datetime",
+        "format": "sql-datetime",
         "startParam": "start_date_time",
         "endParam": "end_date_time"
       },
