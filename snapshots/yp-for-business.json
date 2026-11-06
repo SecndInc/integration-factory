@@ -24,7 +24,8 @@
         "origin": "ypapi",
         "urlPattern": "app-services/authenticate",
         "path": "$.data.securityToken"
-      }
+      },
+      "prefix": "Bearer "
     }
   },
   "values": {

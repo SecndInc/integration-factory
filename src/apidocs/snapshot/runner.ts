@@ -441,6 +441,11 @@ class Run {
   private async computeRule(label: string, rule: HeaderRule | undefined): Promise<string> {
     if (!rule) throw new HeaderError(`${label} is not in the plan`);
     if ('literal' in rule) return rule.literal;
+    const v = await this.resolveRule(label, rule);
+    return rule.prefix && !v.startsWith(rule.prefix) ? `${rule.prefix}${v}` : v;
+  }
+
+  private async resolveRule(label: string, rule: Exclude<HeaderRule, { literal: string }>): Promise<string> {
     if ('fromCookie' in rule) {
       const raw = await this.fetcher.cookie(rule.origin, rule.fromCookie);
       if (raw === undefined || raw === '') throw new HeaderError(`${label}: cookie "${rule.fromCookie}" is not readable on origin "${rule.origin}" (HttpOnly, or the tab is not signed in)`);

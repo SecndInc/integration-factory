@@ -613,6 +613,7 @@
     {
       "id": "crews",
       "docId": "GET app.roofr.com/api/crews",
+      "skip": "403 for this account in the 2026-11-06 smoke while the session probe was alive; the app never called it on the read-only tour",
       "origin": "app",
       "method": "GET",
       "path": "/api/crews",

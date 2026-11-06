@@ -29,12 +29,15 @@ Committed, no account values, parsed by `SnapshotPlanSchema` (`src/apidocs/snaps
 ```ts
 type HeaderRule =
   | { literal: string }
-  | { fromCookie: string; origin: string; decode?: 'uri' }                       // document.cookie on that origin's tab
-  | { fromResponse: { endpoint: string; path: string } }                         // from an earlier snapshot endpoint's response
-  | { fromPageResponse: { origin: string; urlPattern: string; path: string } }   // captured from the page's own traffic while the tab reloads; the snapshot never sends that request
-  | { fromStorage: { origin: string; area: 'local' | 'session'; keyPattern: string } };
+  | { fromCookie: string; origin: string; decode?: 'uri'; prefix?: string }                       // document.cookie on that origin's tab
+  | { fromResponse: { endpoint: string; path: string }; prefix?: string }                         // from an earlier snapshot endpoint's response
+  | { fromPageResponse: { origin: string; urlPattern: string; path: string }; prefix?: string }   // captured from the page's own traffic while the tab reloads; the snapshot never sends that request
+  | { fromStorage: { origin: string; area: 'local' | 'session'; keyPattern: string }; prefix?: string };
 // `plan.headers` keys are HTTP header names and must be lowercase (letters, digits, hyphens); the schema rejects others.
 // `plan.values` takes the same rule kinds, under plain names, for query parameters.
+// `prefix` is literal text put before the resolved value, e.g. "Bearer " when the page stores a bare token but sends
+// `Authorization: Bearer <token>`. Found by the 2026-11-06 YP smoke: the ypapi token sent bare answered 403, with
+// "Bearer " 200. The prefix is plan text, not a value; a value that already starts with it is sent unchanged.
 type Paginator =
   | { kind: 'none' }
   | { kind: 'laravel-meta'; pageParam; perPageParam?; perPage? }   // $.meta.current_page / last_page / total

@@ -7,12 +7,15 @@ const sha256Hex = /^[0-9a-f]{64}$/;
 const headerNameRe = /^[a-z0-9][a-z0-9-]*$/;
 const valueNameRe = /^[A-Za-z][A-Za-z0-9_-]*$/;
 
+/** Literal text put before a resolved value, e.g. "Bearer " for a page that stores a bare token. */
+const prefix = z.string().min(1).optional();
+
 export const HeaderRuleSchema = z.union([
   z.strictObject({ literal: z.string() }),
-  z.strictObject({ fromCookie: z.string().min(1), origin: z.string().min(1), decode: z.literal('uri').optional() }),
-  z.strictObject({ fromResponse: z.strictObject({ endpoint: z.string().min(1), path: z.string().min(1) }) }),
-  z.strictObject({ fromPageResponse: z.strictObject({ origin: z.string().min(1), urlPattern: z.string().min(1), path: z.string().min(1) }) }),
-  z.strictObject({ fromStorage: z.strictObject({ origin: z.string().min(1), area: z.enum(['local', 'session']), keyPattern: z.string().min(1) }) }),
+  z.strictObject({ fromCookie: z.string().min(1), origin: z.string().min(1), decode: z.literal('uri').optional(), prefix }),
+  z.strictObject({ fromResponse: z.strictObject({ endpoint: z.string().min(1), path: z.string().min(1) }), prefix }),
+  z.strictObject({ fromPageResponse: z.strictObject({ origin: z.string().min(1), urlPattern: z.string().min(1), path: z.string().min(1) }), prefix }),
+  z.strictObject({ fromStorage: z.strictObject({ origin: z.string().min(1), area: z.enum(['local', 'session']), keyPattern: z.string().min(1) }), prefix }),
 ]);
 export type HeaderRule = z.infer<typeof HeaderRuleSchema>;
 

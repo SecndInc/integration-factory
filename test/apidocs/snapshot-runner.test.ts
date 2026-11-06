@@ -13,7 +13,7 @@ import { PageFetcher, type AttachOptions, type FetchRequest, type FetchResult, t
 import { monthRanges, validatePlan } from '../../src/apidocs/snapshot/plan.js';
 import { runSnapshot, type SnapshotRunOpts, type SnapshotSummary } from '../../src/apidocs/snapshot/runner.js';
 import { SnapshotStore } from '../../src/apidocs/snapshot/store.js';
-import { ManifestSchema, ProgressSchema, type SnapshotPlan, type SnapshotRow } from '../../src/apidocs/snapshot/types.js';
+import { HeaderRuleSchema, ManifestSchema, ProgressSchema, type SnapshotPlan, type SnapshotRow } from '../../src/apidocs/snapshot/types.js';
 import { cursorTotal, dtTotal, flatTotal, pagedNototTotal, pagedTotal, startFixtureSite, type FixtureSite } from './fixtures/site.js';
 
 const chromiumPath = (() => {
@@ -601,6 +601,37 @@ test('named values reach the request URL only: one page-response source can serv
   const elsewhere = r.lines.join('\n') + (await fs.readFile(path.join(r.dir, 'manifest.json'), 'utf8')) + (await fs.readFile(path.join(r.dir, 'progress.json'), 'utf8'));
   assert.ok(!elsewhere.includes('uid-synthetic-1') && !elsewhere.includes('token-synthetic-1'), 'no log line, manifest or progress holds a value');
   assert.equal(rows[0]!.page_key, 'all', 'the page key never holds a value');
+});
+
+test('a rule prefix goes before the resolved value on the endpoint and on the probe, never doubled, never on other rules', async () => {
+  const headers = {
+    authorization: { fromPageResponse: { origin: 'api', urlPattern: 'authenticate', path: '$.data.securityToken' }, prefix: 'Bearer ' },
+    'x-already': { fromPageResponse: { origin: 'api', urlPattern: 'authenticate', path: '$.data.prefixed' }, prefix: 'Bearer ' },
+    'x-plain': { fromPageResponse: { origin: 'api', urlPattern: 'authenticate', path: '$.data.plain' } },
+  };
+  const plan = fakePlan({ headers }, [{ id: 'acct', origin: 'api', method: 'GET', path: '/acct', headers: ['authorization', 'x-already', 'x-plain'], paginator: { kind: 'none' }, group: 'g' }]);
+  const fetcher = new FakeFetcher(() => ({ body: { data: { ok: 1 } } }), {
+    pageValues: { '$.data.securityToken': 'token-synthetic-2', '$.data.prefixed': 'Bearer token-synthetic-3', '$.data.plain': 'plain-synthetic-4' },
+  });
+  const jobs = await fs.mkdtemp(path.join(root, 'jobs-prefix-'));
+  const r = await runFake(plan, fetcher, { runId: 'prefix', jobs });
+  assert.equal(r.summary?.status, 'complete', r.lines.join('\n'));
+  const call = fetcher.seen.find((x) => new URL(x.url).pathname === '/acct')!;
+  assert.equal(call.headers.authorization, 'Bearer token-synthetic-2');
+  assert.equal(call.headers['x-already'], 'Bearer token-synthetic-3', 'a value that already carries the prefix is sent unchanged');
+  assert.equal(call.headers['x-plain'], 'plain-synthetic-4', 'a rule without a prefix is untouched');
+  const probes = fetcher.seen.filter((x) => new URL(x.url).pathname === '/probe');
+  assert.ok(probes.length >= 2, 'start and end probes ran');
+  for (const p of probes) assert.equal(p.headers.authorization, 'Bearer token-synthetic-2', 'the probe carries the prefixed token too');
+  const elsewhere = r.lines.join('\n') + (await fs.readFile(path.join(r.dir, 'manifest.json'), 'utf8')) + (await fs.readFile(path.join(r.dir, 'progress.json'), 'utf8'));
+  assert.ok(!elsewhere.includes('token-synthetic-2'), 'no log line, manifest or progress holds the value');
+});
+
+test('the plan schema accepts a prefix on resolved rules only', () => {
+  const ok = HeaderRuleSchema.safeParse({ fromPageResponse: { origin: 'api', urlPattern: 'a', path: '$.t' }, prefix: 'Bearer ' });
+  assert.ok(ok.success);
+  assert.equal(HeaderRuleSchema.safeParse({ literal: 'x', prefix: 'Bearer ' }).success, false, 'a literal carries its own text');
+  assert.equal(HeaderRuleSchema.safeParse({ fromCookie: 'c', origin: 'api', prefix: '' }).success, false, 'an empty prefix is a mistake');
 });
 
 test('a named value that cannot be resolved fails only the endpoints that use it, with a failure row', async () => {
