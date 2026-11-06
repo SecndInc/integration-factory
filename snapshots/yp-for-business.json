@@ -1,0 +1,1035 @@
+{
+  "planVersion": 1,
+  "site": "yp-for-business",
+  "origins": {
+    "metrics": "https://mymetrics.yp.ca",
+    "ypapi": "https://ypapi.ypcloud.io"
+  },
+  "tabFor": {
+    "metrics": "mymetrics.yp.ca",
+    "ypapi": "ypforbusiness.yellowpages.ca"
+  },
+  "loginPaths": [
+    "/login",
+    "b2clogin\\.com",
+    "[sS]imple[sS][aA][mM][lL]|/saml"
+  ],
+  "probe": {
+    "metrics": "/server/api/nav/app",
+    "ypapi": "/bc/v1/app-services/maintenance"
+  },
+  "headers": {
+    "authorization": {
+      "fromPageResponse": {
+        "origin": "ypapi",
+        "urlPattern": "app-services/authenticate",
+        "path": "$.data.securityToken"
+      },
+      "prefix": "Bearer "
+    }
+  },
+  "values": {
+    "ypapiUid": {
+      "fromPageResponse": {
+        "origin": "ypapi",
+        "urlPattern": "app-services/authenticate",
+        "path": "$.data.uid"
+      }
+    }
+  },
+  "ids": {
+    "userId": {
+      "endpoint": "session-init-user",
+      "path": "$.data.settings.userId"
+    },
+    "dashId": {
+      "endpoint": "dash-pages",
+      "path": "$.data.aaData[].id",
+      "fallbackLiterals": [
+        92,
+        139
+      ]
+    },
+    "widgetId": {
+      "endpoint": "dash-detail",
+      "path": "$.data.page.widget_ids[]"
+    },
+    "serviceId": {
+      "endpoint": "dash-detail",
+      "path": "$.data.page.data_sources[].data_source_id"
+    },
+    "accountId": {
+      "endpoint": "ypapi-account",
+      "path": "$.data.accounts[].accountNumber"
+    },
+    "analyticId": {
+      "endpoint": "ypapi-account",
+      "path": "$.data.accounts[].accountNumber"
+    },
+    "merchantId": {
+      "endpoint": "ypapi-account",
+      "path": "$.data.accounts[].merchants[].merchantId"
+    }
+  },
+  "widgetRules": {
+    "dashIdsFrom": "dashId",
+    "endpointTemplate": {
+      "widget": "widget-data"
+    },
+    "widgetIdParam": "widget_request",
+    "pageIdParam": "widget_page_id",
+    "literals": {
+      "timegrouping": "month"
+    },
+    "queryFromWidget": {
+      "widget_type": {
+        "path": "$.type"
+      },
+      "fields": {
+        "path": "$.metadata.data_columns.selected[].field",
+        "join": ","
+      },
+      "groupby": {
+        "path": "$.metadata.data_columns.grouped[].field",
+        "join": ","
+      },
+      "filter_set_id": {
+        "path": "$.metadata.filter_set_id"
+      },
+      "timegrouping": {
+        "path": "$.metadata.time_grouping"
+      }
+    }
+  },
+  "endpoints": [
+    {
+      "id": "session-init-user",
+      "docId": "GET mymetrics.yp.ca/server/api/session/initUser",
+      "origin": "metrics",
+      "method": "GET",
+      "path": "/server/api/session/initUser",
+      "query": {
+        "is_nui": true,
+        "query_id": {
+          "computed": "uuid"
+        }
+      },
+      "paginator": {
+        "kind": "none"
+      },
+      "group": "account",
+      "yields": {
+        "userId": "$.data.settings.userId"
+      }
+    },
+    {
+      "id": "branding-mappings",
+      "docId": "GET mymetrics.yp.ca/server/api/branding/mappings",
+      "origin": "metrics",
+      "method": "GET",
+      "path": "/server/api/branding/mappings",
+      "paginator": {
+        "kind": "none"
+      },
+      "group": "account"
+    },
+    {
+      "id": "nav-app",
+      "docId": "GET mymetrics.yp.ca/server/api/nav/app",
+      "origin": "metrics",
+      "method": "GET",
+      "path": "/server/api/nav/app",
+      "paginator": {
+        "kind": "none"
+      },
+      "group": "account"
+    },
+    {
+      "id": "dashboard-filters",
+      "docId": "GET mymetrics.yp.ca/server/api/dash/dashboardfilters",
+      "origin": "metrics",
+      "method": "GET",
+      "path": "/server/api/dash/dashboardfilters",
+      "query": {
+        "query_id": {
+          "computed": "uuid"
+        }
+      },
+      "paginator": {
+        "kind": "none"
+      },
+      "group": "account"
+    },
+    {
+      "id": "dashboard-filters-view",
+      "docId": "GET mymetrics.yp.ca/server/api/dash/dashboardfilters/view",
+      "origin": "metrics",
+      "method": "GET",
+      "path": "/server/api/dash/dashboardfilters/view",
+      "query": {
+        "query_id": {
+          "computed": "uuid"
+        }
+      },
+      "paginator": {
+        "kind": "none"
+      },
+      "group": "account"
+    },
+    {
+      "id": "daterange",
+      "docId": "GET mymetrics.yp.ca/server/api/daterange",
+      "origin": "metrics",
+      "method": "GET",
+      "path": "/server/api/daterange",
+      "query": {
+        "query_id": {
+          "computed": "uuid"
+        }
+      },
+      "paginator": {
+        "kind": "none"
+      },
+      "group": "account"
+    },
+    {
+      "id": "daterange-relative-ranges",
+      "docId": "GET mymetrics.yp.ca/server/api/daterange/relativeranges",
+      "origin": "metrics",
+      "method": "GET",
+      "path": "/server/api/daterange/relativeranges",
+      "query": {
+        "query_id": {
+          "computed": "uuid"
+        }
+      },
+      "paginator": {
+        "kind": "none"
+      },
+      "group": "account"
+    },
+    {
+      "id": "dashfolders-available",
+      "docId": "GET mymetrics.yp.ca/server/api/dashfolders/isfoldersavailable",
+      "origin": "metrics",
+      "method": "GET",
+      "path": "/server/api/dashfolders/isfoldersavailable",
+      "query": {
+        "query_id": {
+          "computed": "uuid"
+        }
+      },
+      "paginator": {
+        "kind": "none"
+      },
+      "group": "account"
+    },
+    {
+      "id": "user-listsettings",
+      "docId": "GET mymetrics.yp.ca/server/api/users/{userId}/listsettings",
+      "origin": "metrics",
+      "method": "GET",
+      "path": "/server/api/users/{userId}/listsettings",
+      "query": {
+        "query_id": {
+          "computed": "uuid"
+        }
+      },
+      "paginator": {
+        "kind": "none"
+      },
+      "group": "account"
+    },
+    {
+      "id": "services",
+      "docId": "GET mymetrics.yp.ca/server/api/services",
+      "origin": "metrics",
+      "method": "GET",
+      "path": "/server/api/services",
+      "query": {
+        "all": true,
+        "query_id": {
+          "computed": "uuid"
+        }
+      },
+      "paginator": {
+        "kind": "none"
+      },
+      "records": "$.data",
+      "group": "account"
+    },
+    {
+      "id": "categories",
+      "docId": "GET mymetrics.yp.ca/server/api/categories",
+      "origin": "metrics",
+      "method": "GET",
+      "path": "/server/api/categories",
+      "query": {
+        "all": true,
+        "query_id": {
+          "computed": "uuid"
+        }
+      },
+      "paginator": {
+        "kind": "none"
+      },
+      "records": "$.data",
+      "group": "account"
+    },
+    {
+      "id": "dashboard-filter-detail",
+      "docId": "GET mymetrics.yp.ca/server/api/dash/dashboardfilters/{dashboardfilterId}",
+      "origin": "metrics",
+      "method": "GET",
+      "path": "/server/api/dash/dashboardfilters/{dashboardfilterId}",
+      "query": {
+        "query_id": {
+          "computed": "uuid"
+        }
+      },
+      "paginator": {
+        "kind": "none"
+      },
+      "group": "account",
+      "skip": "path param dashboardfilterId has no recorded binding (the list rows carry key, not id)"
+    },
+    {
+      "id": "dash-page-isleads",
+      "docId": "GET mymetrics.yp.ca/server/api/dash/pages/isleads/{isleadId}",
+      "origin": "metrics",
+      "method": "GET",
+      "path": "/server/api/dash/pages/isleads/{isleadId}",
+      "query": {
+        "query_id": {
+          "computed": "uuid"
+        }
+      },
+      "paginator": {
+        "kind": "none"
+      },
+      "group": "account",
+      "skip": "path param isleadId has no recorded binding; probably a dashboard id but unconfirmed"
+    },
+    {
+      "id": "dash-page-thumbnail",
+      "docId": "GET mymetrics.yp.ca/server/api/dash/pages/{pageId}/thumbnail",
+      "origin": "metrics",
+      "method": "GET",
+      "path": "/server/api/dash/pages/{pageId}/thumbnail",
+      "query": {
+        "query_id": {
+          "computed": "uuid"
+        }
+      },
+      "paginator": {
+        "kind": "none"
+      },
+      "group": "account",
+      "skip": "path param pageId has no recorded binding; the response is an image URL, not account data"
+    },
+    {
+      "id": "dash-pages",
+      "docId": "GET mymetrics.yp.ca/server/api/dash/pages",
+      "origin": "metrics",
+      "method": "GET",
+      "path": "/server/api/dash/pages",
+      "query": {
+        "all": true,
+        "is_predefined": false,
+        "is_in_library": false,
+        "strict": 1,
+        "extra": true,
+        "sort": "title",
+        "datatable": true,
+        "summary": true,
+        "query_id": {
+          "computed": "uuid"
+        }
+      },
+      "paginator": {
+        "kind": "datatables",
+        "pageParam": "page",
+        "length": 100,
+        "totalPath": "$.data.iTotalRecords",
+        "recordsPath": "$.data.aaData"
+      },
+      "records": "$.data.aaData",
+      "total": "$.data.iTotalRecords",
+      "group": "datatables",
+      "yields": {
+        "dashId": "$.data.aaData[].id"
+      }
+    },
+    {
+      "id": "dashfolders",
+      "docId": "GET mymetrics.yp.ca/server/api/dashfolders",
+      "origin": "metrics",
+      "method": "GET",
+      "path": "/server/api/dashfolders",
+      "query": {
+        "all": true,
+        "sort": "name",
+        "datatable": true,
+        "summary": true,
+        "query_id": {
+          "computed": "uuid"
+        }
+      },
+      "paginator": {
+        "kind": "datatables",
+        "pageParam": "page",
+        "length": 100,
+        "totalPath": "$.data.iTotalRecords",
+        "recordsPath": "$.data.aaData"
+      },
+      "records": "$.data.aaData",
+      "total": "$.data.iTotalRecords",
+      "group": "datatables"
+    },
+    {
+      "id": "endcustomers",
+      "docId": "GET mymetrics.yp.ca/server/api/endcustomers",
+      "origin": "metrics",
+      "method": "GET",
+      "path": "/server/api/endcustomers",
+      "query": {
+        "all": true,
+        "datatable": true,
+        "summary": true,
+        "query_id": {
+          "computed": "uuid"
+        }
+      },
+      "paginator": {
+        "kind": "datatables",
+        "pageParam": "page",
+        "length": 100,
+        "totalPath": "$.data.iTotalRecords",
+        "recordsPath": "$.data.aaData"
+      },
+      "records": "$.data.aaData",
+      "total": "$.data.iTotalRecords",
+      "group": "datatables"
+    },
+    {
+      "id": "reporting-templates",
+      "docId": "GET mymetrics.yp.ca/server/api/reportingtemplates",
+      "origin": "metrics",
+      "method": "GET",
+      "path": "/server/api/reportingtemplates",
+      "query": {
+        "all": true,
+        "datatable": true,
+        "summary": true,
+        "query_id": {
+          "computed": "uuid"
+        }
+      },
+      "paginator": {
+        "kind": "datatables",
+        "pageParam": "page",
+        "length": 100,
+        "totalPath": "$.data.iTotalRecords",
+        "recordsPath": "$.data.aaData"
+      },
+      "records": "$.data.aaData",
+      "total": "$.data.iTotalRecords",
+      "group": "datatables"
+    },
+    {
+      "id": "report-studio",
+      "docId": "GET mymetrics.yp.ca/server/api/reportstudio",
+      "origin": "metrics",
+      "method": "GET",
+      "path": "/server/api/reportstudio",
+      "query": {
+        "is_predefined": false,
+        "all": true,
+        "sort": "-updated_at",
+        "is_in_library": false,
+        "extra": true,
+        "datatable": true,
+        "summary": true,
+        "query_id": {
+          "computed": "uuid"
+        }
+      },
+      "paginator": {
+        "kind": "datatables",
+        "pageParam": "page",
+        "length": 100,
+        "totalPath": "$.data.iTotalRecords",
+        "recordsPath": "$.data.aaData"
+      },
+      "records": "$.data.aaData",
+      "total": "$.data.iTotalRecords",
+      "group": "datatables"
+    },
+    {
+      "id": "scheduled-reports",
+      "docId": "GET mymetrics.yp.ca/server/api/scheduledreports",
+      "origin": "metrics",
+      "method": "GET",
+      "path": "/server/api/scheduledreports",
+      "query": {
+        "all": true,
+        "status": "active",
+        "datatable": true,
+        "summary": true,
+        "query_id": {
+          "computed": "uuid"
+        }
+      },
+      "paginator": {
+        "kind": "datatables",
+        "pageParam": "page",
+        "length": 100,
+        "totalPath": "$.data.iTotalRecords",
+        "recordsPath": "$.data.aaData"
+      },
+      "records": "$.data.aaData",
+      "total": "$.data.iTotalRecords",
+      "group": "datatables"
+    },
+    {
+      "id": "tags",
+      "docId": "GET mymetrics.yp.ca/server/api/tags",
+      "origin": "metrics",
+      "method": "GET",
+      "path": "/server/api/tags",
+      "query": {
+        "all": true,
+        "datatable": true,
+        "summary": true,
+        "query_id": {
+          "computed": "uuid"
+        }
+      },
+      "paginator": {
+        "kind": "datatables",
+        "pageParam": "page",
+        "length": 100,
+        "totalPath": "$.data.iTotalRecords",
+        "recordsPath": "$.data.aaData"
+      },
+      "records": "$.data.aaData",
+      "total": "$.data.iTotalRecords",
+      "group": "datatables"
+    },
+    {
+      "id": "executive-summaries-items",
+      "docId": "GET mymetrics.yp.ca/server/api/dash/executivesummaries/items",
+      "origin": "metrics",
+      "method": "GET",
+      "path": "/server/api/dash/executivesummaries/items",
+      "query": {
+        "all": true,
+        "list_type": "dashboard",
+        "sort": "-id",
+        "datatable": true,
+        "summary": true,
+        "query_id": {
+          "computed": "uuid"
+        }
+      },
+      "paginator": {
+        "kind": "datatables",
+        "pageParam": "page",
+        "length": 100,
+        "totalPath": "$.data.iTotalRecords",
+        "recordsPath": "$.data.aaData"
+      },
+      "records": "$.data.aaData",
+      "total": "$.data.iTotalRecords",
+      "group": "datatables"
+    },
+    {
+      "id": "dash-detail",
+      "docId": "GET mymetrics.yp.ca/server/api/dash/{dashId}",
+      "origin": "metrics",
+      "method": "GET",
+      "path": "/server/api/dash/{dashId}",
+      "query": {
+        "all": true,
+        "single_layout_widgets_only": true,
+        "include_executive_summary": true,
+        "is_vue_dashboard": true,
+        "query_id": {
+          "computed": "uuid"
+        }
+      },
+      "paginator": {
+        "kind": "none"
+      },
+      "group": "dashboards",
+      "yields": {
+        "widgetId": "$.data.page.widget_ids[]",
+        "serviceId": "$.data.page.data_sources[].data_source_id"
+      }
+    },
+    {
+      "id": "dash-leads",
+      "docId": "GET mymetrics.yp.ca/server/api/dash/leads",
+      "origin": "metrics",
+      "method": "GET",
+      "path": "/server/api/dash/leads",
+      "query": {
+        "all": true,
+        "single_layout_widgets_only": true,
+        "include_executive_summary": true,
+        "query_id": {
+          "computed": "uuid"
+        }
+      },
+      "paginator": {
+        "kind": "none"
+      },
+      "group": "dashboards"
+    },
+    {
+      "id": "admin-manageleads",
+      "docId": "GET mymetrics.yp.ca/server/api/admin/manageleads",
+      "origin": "metrics",
+      "method": "GET",
+      "path": "/server/api/admin/manageleads",
+      "query": {
+        "all": true,
+        "query_id": {
+          "computed": "uuid"
+        }
+      },
+      "paginator": {
+        "kind": "none"
+      },
+      "group": "dashboards"
+    },
+    {
+      "id": "widget-data",
+      "docId": "GET mymetrics.yp.ca/server/api/dash/widgets/{widgetId}/data",
+      "origin": "metrics",
+      "method": "GET",
+      "path": "/server/api/dash/widgets/{widgetId}/data",
+      "query": {
+        "is_vue_dashboard": true,
+        "query_id": {
+          "computed": "uuid"
+        }
+      },
+      "paginator": {
+        "kind": "none"
+      },
+      "range": {
+        "months": 24,
+        "param": "daterange",
+        "format": "daterange-pipe"
+      },
+      "group": "widgets-monthly",
+      "dependsOn": [
+        "dash-detail"
+      ]
+    },
+    {
+      "id": "leads",
+      "docId": "GET mymetrics.yp.ca/server/api/leads",
+      "origin": "metrics",
+      "method": "GET",
+      "path": "/server/api/leads",
+      "query": {
+        "fields": "id,note_count,timestamp,service_name,type,client_name,campaign_name,quality,first_name,last_name,customer_number,customer_email,customer_name,is_overriden",
+        "aggregate": false,
+        "datatable": true,
+        "sort": "-timestamp",
+        "query_id": {
+          "computed": "uuid"
+        }
+      },
+      "paginator": {
+        "kind": "datatables",
+        "pageParam": "page",
+        "length": 100,
+        "totalPath": "$.data.iTotalRecords",
+        "recordsPath": "$.data.aaData"
+      },
+      "records": "$.data.aaData",
+      "total": "$.data.iTotalRecords",
+      "range": {
+        "months": 24,
+        "param": "daterange",
+        "format": "daterange-pipe"
+      },
+      "group": "leads-monthly"
+    },
+    {
+      "id": "service-adgroup",
+      "docId": "GET mymetrics.yp.ca/server/api/services/{serviceId}/data/adgroup",
+      "skip": "every recorded call (132 on 2026-11-04) is widget-bound: widget_request, widget_type and widget_page_id; called standalone it answered 400 on every request in the 2026-11-06 run. Widget data comes through widget-data",
+      "origin": "metrics",
+      "method": "GET",
+      "path": "/server/api/services/{serviceId}/data/adgroup",
+      "query": {
+        "fields": "name,ImpressionCount,ClickCount,CTR,AverageCPC,SpendCount",
+        "groupby": "adgroup_id",
+        "aggregate": false,
+        "sort": "-ClickCount",
+        "datatable": true,
+        "query_id": {
+          "computed": "uuid"
+        }
+      },
+      "paginator": {
+        "kind": "datatables",
+        "pageParam": "page",
+        "length": 100,
+        "totalPath": "$.data.iTotalRecords",
+        "recordsPath": "$.data.aaData"
+      },
+      "records": "$.data.aaData",
+      "total": "$.data.iTotalRecords",
+      "range": {
+        "months": 24,
+        "param": "daterange",
+        "format": "daterange-pipe"
+      },
+      "group": "service-breakdowns-monthly"
+    },
+    {
+      "id": "service-adgroupcgn",
+      "docId": "GET mymetrics.yp.ca/server/api/services/{serviceId}/data/adgroupcgn",
+      "skip": "every recorded call (132 on 2026-11-04) is widget-bound: widget_request, widget_type and widget_page_id; called standalone it answered 400 on every request in the 2026-11-06 run. Widget data comes through widget-data",
+      "origin": "metrics",
+      "method": "GET",
+      "path": "/server/api/services/{serviceId}/data/adgroupcgn",
+      "query": {
+        "fields": "name,objective_campaign,adset_start_date,adset_end_date,creative_links,AdPreviewURL,AdMobilePreviewURL,AvgreachCount,AvgfrequencyCount,ImpressionCount,CpmCount,Inline_link_clickCount,CpcLinkCount,CtrLinkCount,calculation_151,Video_viewsCount",
+        "groupby": "adgroup_id,objective_campaign,adset_start_date,adset_end_date",
+        "aggregate": false,
+        "sort": "-ImpressionCount",
+        "datatable": true,
+        "total": true,
+        "query_id": {
+          "computed": "uuid"
+        }
+      },
+      "paginator": {
+        "kind": "datatables",
+        "pageParam": "page",
+        "length": 100,
+        "totalPath": "$.data.iTotalRecords",
+        "recordsPath": "$.data.aaData"
+      },
+      "records": "$.data.aaData",
+      "total": "$.data.iTotalRecords",
+      "range": {
+        "months": 24,
+        "param": "daterange",
+        "format": "daterange-pipe"
+      },
+      "group": "service-breakdowns-monthly"
+    },
+    {
+      "id": "service-cgnad",
+      "docId": "GET mymetrics.yp.ca/server/api/services/{serviceId}/data/cgnad",
+      "skip": "every recorded call (132 on 2026-11-04) is widget-bound: widget_request, widget_type and widget_page_id; called standalone it answered 400 on every request in the 2026-11-06 run. Widget data comes through widget-data",
+      "origin": "metrics",
+      "method": "GET",
+      "path": "/server/api/services/{serviceId}/data/cgnad",
+      "query": {
+        "fields": "preview,ImpressionCount,ClickCount,AverageCPC",
+        "groupby": "preview",
+        "aggregate": false,
+        "sort": "-ClickCount",
+        "datatable": true,
+        "query_id": {
+          "computed": "uuid"
+        }
+      },
+      "paginator": {
+        "kind": "datatables",
+        "pageParam": "page",
+        "length": 100,
+        "totalPath": "$.data.iTotalRecords",
+        "recordsPath": "$.data.aaData"
+      },
+      "records": "$.data.aaData",
+      "total": "$.data.iTotalRecords",
+      "range": {
+        "months": 24,
+        "param": "daterange",
+        "format": "daterange-pipe"
+      },
+      "group": "service-breakdowns-monthly"
+    },
+    {
+      "id": "service-city",
+      "docId": "GET mymetrics.yp.ca/server/api/services/{serviceId}/data/city",
+      "skip": "every recorded call (132 on 2026-11-04) is widget-bound: widget_request, widget_type and widget_page_id; called standalone it answered 400 on every request in the 2026-11-06 run. Widget data comes through widget-data",
+      "origin": "metrics",
+      "method": "GET",
+      "path": "/server/api/services/{serviceId}/data/city",
+      "query": {
+        "fields": "city,ClickCount",
+        "groupby": "city",
+        "aggregate": false,
+        "sort": "-ClickCount",
+        "datatable": true,
+        "query_id": {
+          "computed": "uuid"
+        }
+      },
+      "paginator": {
+        "kind": "datatables",
+        "pageParam": "page",
+        "length": 100,
+        "totalPath": "$.data.iTotalRecords",
+        "recordsPath": "$.data.aaData"
+      },
+      "records": "$.data.aaData",
+      "total": "$.data.iTotalRecords",
+      "range": {
+        "months": 24,
+        "param": "daterange",
+        "format": "daterange-pipe"
+      },
+      "group": "service-breakdowns-monthly"
+    },
+    {
+      "id": "service-keyword",
+      "docId": "GET mymetrics.yp.ca/server/api/services/{serviceId}/data/keyword",
+      "skip": "every recorded call (132 on 2026-11-04) is widget-bound: widget_request, widget_type and widget_page_id; called standalone it answered 400 on every request in the 2026-11-06 run. Widget data comes through widget-data",
+      "origin": "metrics",
+      "method": "GET",
+      "path": "/server/api/services/{serviceId}/data/keyword",
+      "query": {
+        "fields": "name,ImpressionCount,ClickCount,AverageCPC",
+        "groupby": "keyword_id",
+        "aggregate": false,
+        "sort": "-ClickCount",
+        "datatable": true,
+        "query_id": {
+          "computed": "uuid"
+        }
+      },
+      "paginator": {
+        "kind": "datatables",
+        "pageParam": "page",
+        "length": 100,
+        "totalPath": "$.data.iTotalRecords",
+        "recordsPath": "$.data.aaData"
+      },
+      "records": "$.data.aaData",
+      "total": "$.data.iTotalRecords",
+      "range": {
+        "months": 24,
+        "param": "daterange",
+        "format": "daterange-pipe"
+      },
+      "group": "service-breakdowns-monthly"
+    },
+    {
+      "id": "service-device",
+      "docId": "GET mymetrics.yp.ca/server/api/services/{serviceId}/data/device",
+      "skip": "every recorded call (132 on 2026-11-04) is widget-bound: widget_request, widget_type and widget_page_id; called standalone it answered 400 on every request in the 2026-11-06 run. Widget data comes through widget-data",
+      "origin": "metrics",
+      "method": "GET",
+      "path": "/server/api/services/{serviceId}/data/device",
+      "query": {
+        "fields": "ClickCount,name",
+        "groupby": "device_id",
+        "total": true,
+        "query_id": {
+          "computed": "uuid"
+        }
+      },
+      "paginator": {
+        "kind": "none"
+      },
+      "records": "$.data",
+      "range": {
+        "months": 24,
+        "param": "daterange",
+        "format": "daterange-pipe"
+      },
+      "group": "service-breakdowns-monthly"
+    },
+    {
+      "id": "service-cgn",
+      "docId": "GET mymetrics.yp.ca/server/api/services/{serviceId}/data/cgn",
+      "skip": "every recorded call (132 on 2026-11-04) is widget-bound: widget_request, widget_type and widget_page_id; called standalone it answered 400 on every request in the 2026-11-06 run. Widget data comes through widget-data",
+      "origin": "metrics",
+      "method": "GET",
+      "path": "/server/api/services/{serviceId}/data/cgn",
+      "query": {
+        "fields": "ImpressionCount,ClickCount",
+        "aggregate": true,
+        "total": true,
+        "query_id": {
+          "computed": "uuid"
+        }
+      },
+      "paginator": {
+        "kind": "none"
+      },
+      "records": "$.data",
+      "range": {
+        "months": 24,
+        "param": "daterange",
+        "format": "daterange-pipe"
+      },
+      "group": "service-breakdowns-monthly"
+    },
+    {
+      "id": "service-conversion",
+      "docId": "GET mymetrics.yp.ca/server/api/services/{serviceId}/data/conversion",
+      "skip": "every recorded call (132 on 2026-11-04) is widget-bound: widget_request, widget_type and widget_page_id; called standalone it answered 400 on every request in the 2026-11-06 run. Widget data comes through widget-data",
+      "origin": "metrics",
+      "method": "GET",
+      "path": "/server/api/services/{serviceId}/data/conversion",
+      "query": {
+        "fields": "Conversion_manyperclickCount",
+        "groupby": "conversion_category_name",
+        "query_id": {
+          "computed": "uuid"
+        }
+      },
+      "paginator": {
+        "kind": "none"
+      },
+      "records": "$.data",
+      "range": {
+        "months": 24,
+        "param": "daterange",
+        "format": "daterange-pipe"
+      },
+      "group": "service-breakdowns-monthly"
+    },
+    {
+      "id": "service-genderagescgn",
+      "docId": "GET mymetrics.yp.ca/server/api/services/{serviceId}/data/genderagescgn",
+      "skip": "every recorded call (132 on 2026-11-04) is widget-bound: widget_request, widget_type and widget_page_id; called standalone it answered 400 on every request in the 2026-11-06 run. Widget data comes through widget-data",
+      "origin": "metrics",
+      "method": "GET",
+      "path": "/server/api/services/{serviceId}/data/genderagescgn",
+      "query": {
+        "fields": "ImpressionCount",
+        "groupby": "gender",
+        "sort": "age",
+        "query_id": {
+          "computed": "uuid"
+        }
+      },
+      "paginator": {
+        "kind": "none"
+      },
+      "records": "$.data",
+      "range": {
+        "months": 24,
+        "param": "daterange",
+        "format": "daterange-pipe"
+      },
+      "group": "service-breakdowns-monthly"
+    },
+    {
+      "id": "category-data",
+      "docId": "GET mymetrics.yp.ca/server/api/categories/{categoryId}/data/{dataId}",
+      "origin": "metrics",
+      "method": "GET",
+      "path": "/server/api/categories/{categoryId}/data/{dataId}",
+      "query": {
+        "query_id": {
+          "computed": "uuid"
+        }
+      },
+      "paginator": {
+        "kind": "none"
+      },
+      "group": "service-breakdowns-monthly",
+      "skip": "path params categoryId and dataId are literals in the docs (no recorded binding); a dashboard widget carries data_source_id, data_type and data_view_id, but an id path cannot filter by data_type"
+    },
+    {
+      "id": "ypapi-maintenance",
+      "docId": "GET ypapi.ypcloud.io/bc/v1/app-services/maintenance",
+      "origin": "ypapi",
+      "method": "GET",
+      "path": "/bc/v1/app-services/maintenance",
+      "headers": [
+        "authorization"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "group": "ypapi"
+    },
+    {
+      "id": "ypapi-account",
+      "docId": "GET ypapi.ypcloud.io/bc/v1/app-services/account",
+      "origin": "ypapi",
+      "method": "GET",
+      "path": "/bc/v1/app-services/account",
+      "query": {
+        "search": {
+          "fromValue": "ypapiUid"
+        }
+      },
+      "headers": [
+        "authorization"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "group": "ypapi",
+      "yields": {
+        "accountId": "$.data.accounts[].accountNumber",
+        "analyticId": "$.data.accounts[].accountNumber",
+        "merchantId": "$.data.accounts[].merchants[].merchantId"
+      }
+    },
+    {
+      "id": "ypapi-bank-hours",
+      "docId": "GET ypapi.ypcloud.io/bc/v1/app-services/account/{accountId}/bank-hours",
+      "origin": "ypapi",
+      "method": "GET",
+      "path": "/bc/v1/app-services/account/{accountId}/bank-hours",
+      "query": {
+        "bankHoursByMid": false
+      },
+      "headers": [
+        "authorization"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "group": "ypapi"
+    },
+    {
+      "id": "ypapi-merchant-assets",
+      "docId": "GET ypapi.ypcloud.io/bc/v1/app-services/merchant/{merchantId}/assets",
+      "origin": "ypapi",
+      "method": "GET",
+      "path": "/bc/v1/app-services/merchant/{merchantId}/assets",
+      "query": {
+        "status": "ACTIVE"
+      },
+      "headers": [
+        "authorization"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "group": "ypapi"
+    },
+    {
+      "id": "ypapi-url-analytics",
+      "docId": "GET ypapi.ypcloud.io/bc/v1/app-services/url/analytics/{analyticId}",
+      "origin": "ypapi",
+      "method": "GET",
+      "path": "/bc/v1/app-services/url/analytics/{analyticId}",
+      "headers": [
+        "authorization"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "group": "ypapi"
+    }
+  ]
+}

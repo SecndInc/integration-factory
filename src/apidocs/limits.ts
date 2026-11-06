@@ -50,3 +50,29 @@ export const tourClickTimeoutMs = 3_000;
 export const mineContextWindowChars = 160;
 /** A path literal longer than this is inline data, not a route (mine). */
 export const minePathMaxChars = 200;
+
+/** Snapshot: minimum gap between two requests on one tab, and requests in flight per tab. */
+export const snapshotMinDelayMs = 350;
+export const snapshotConcurrency = 2;
+/** Snapshot: one in-page fetch gives up after this long. */
+export const snapshotRequestTimeoutMs = 30_000;
+/** Snapshot: retries per request on 429, 5xx, network error or timeout (the first try is not counted: at most 1 + this many requests). */
+export const snapshotRetryMax = 3;
+/** Snapshot: backoff starts here, doubles per attempt, and is capped at the max. */
+export const snapshotBackoffBaseMs = 1_000;
+export const snapshotBackoffMaxMs = 30_000;
+/** Snapshot: this many failed requests in a row abort the run. */
+export const snapshotConsecutiveFailuresMax = 10;
+/** Snapshot: a liveness probe runs every this many requests per origin. */
+export const snapshotProbeEveryRequests = 200;
+/** Snapshot: a response body larger than this is recorded as `too-large`. */
+export const snapshotBodyMaxBytes = 8 * 1024 * 1024;
+/** Snapshot: default page size asked of Laravel-style lists, and DataTables `length`. */
+export const snapshotPerPage = 50;
+export const snapshotDataTablesLength = 100;
+/** Snapshot: default number of calendar months in a ranged series. */
+export const snapshotMonthsDefault = 24;
+/** Snapshot: ceilings per endpoint (pages), per id source (ids) and per run (requests). */
+export const snapshotPagesMax = 2_000;
+export const snapshotIdsMax = 20_000;
+export const snapshotRequestsMax = 100_000;

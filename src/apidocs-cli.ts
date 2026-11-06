@@ -5,9 +5,11 @@
 //   har     <trace.jsonl> [-o <out.har>]
 //   build   <target> [--workflows <dir>] [--jobs <dir>] [--out <dir>] [--redact-key <k>]...   (keys also from target.redactKeys)
 //   mine    <target> [--jobs <dir>]
+//   snapshot <target> --attach <url> [--plan <file>] [--resume <runId>] [--only <id>]... [--group <g>]... [--per-id core|full]
+//            [--max-ids N] [--ids-from <file>] [--months N] [--jobs <dir>] [--dry-run]
 //
 // Exit codes: 0 ok, 1 unexpected, 2 environment (browser, attach, every bundle fetch failed), 3 input (spec, trace),
-// 4 run did not complete.
+// 4 run did not complete (a snapshot that is partial or aborted, a signed-in session that expired).
 // `record` prunes traces older than traceRetentionDays before it starts. `build` reads every trace of the site,
 // warns (never fails) when a workflow's latest run is not completed, picks up jobs/<site>/mined.json when `mine`
 // wrote one, and writes the four outputs atomically. `mine` fetches the Script URLs of the latest trace without
@@ -18,20 +20,25 @@
 import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import { writeAtomic } from './apidocs/atomic.js';
 import { derive } from './apidocs/derive.js';
 import { recordWithHumanDriver, siteIdOf, type BrowserSource } from './apidocs/drivers/human.js';
 import { CaptureError, exitCodeFor } from './apidocs/errors.js';
-import { bundleMaxBytes, bundlesMax, mineFetchConcurrency, mineFetchTimeoutMs, showBodyMaxChars } from './apidocs/limits.js';
+import { bundleMaxBytes, bundlesMax, mineFetchConcurrency, mineFetchTimeoutMs, showBodyMaxChars, snapshotMonthsDefault } from './apidocs/limits.js';
 import { toHar } from './apidocs/har.js';
 import { extractChunkRefs, mergeMined, mineBundle, type MinedParts } from './apidocs/mine.js';
 import { emptyRedactionPolicy, isSensitiveName, REDACTED } from './apidocs/redact.js';
 import { renderApiDoc } from './apidocs/render/index.js';
 import { assemble, listTraces, newRunId, pruneTraces, readTrace, tracePathFor } from './apidocs/trace.js';
 import { MinedCodeSchema, WorkflowSchema, type Body, type Exchange, type MinedCode, type Trace, type Workflow } from './apidocs/types.js';
-import { loadTarget, type ResolvedTarget } from './target.js';
+import { PageFetcher } from './apidocs/snapshot/fetcher.js';
+import { describePlan, planRun, validatePlan } from './apidocs/snapshot/plan.js';
+import { runSnapshot } from './apidocs/snapshot/runner.js';
+import { SnapshotStore } from './apidocs/snapshot/store.js';
+import { consentValid, loadTarget, type ResolvedTarget } from './target.js';
 
 export interface ParsedArgs {
-  command: 'record' | 'inspect' | 'har' | 'build' | 'mine';
+  command: 'record' | 'inspect' | 'har' | 'build' | 'mine' | 'snapshot';
   positional: string[];
   flags: Record<string, string | string[] | true>;
 }
@@ -90,6 +97,10 @@ export const cliDeps = {
   renderApiDoc,
   isSensitiveName,
   fetchText,
+  attachFetcher: PageFetcher.attach.bind(PageFetcher),
+  createStore: SnapshotStore.create.bind(SnapshotStore),
+  resumeStore: SnapshotStore.resume.bind(SnapshotStore),
+  runSnapshot,
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -103,13 +114,15 @@ const usage: Record<ParsedArgs['command'], string> = {
   har: 'apidocs har <trace.jsonl> [-o <out.har>]',
   build: 'apidocs build <target> [--workflows <dir>] [--jobs <dir>] [--out <dir>] [--redact-key <k>]...',
   mine: 'apidocs mine <target> [--jobs <dir>]',
+  snapshot:
+    'apidocs snapshot <target> --attach <http://127.0.0.1:port> [--plan <file>] [--resume <runId>] [--only <id>]... [--group <g>]... [--per-id core|full] [--max-ids N] [--ids-from <file>] [--months N] [--jobs <dir>] [--dry-run]',
 };
 const usageAll = Object.values(usage).join('\n');
 const commands = Object.keys(usage) as ParsedArgs['command'][];
 
-const valueFlags = new Set(['workflow', 'attach', 'host', 'jobs', 'step', 'grep', 'show', 'o', 'workflows', 'out', 'redact-key']);
-const booleanFlags = new Set(['headed', 'browserbase', 'hold-bodies', 'raw']);
-const repeatableFlags = new Set(['host', 'redact-key']);
+const valueFlags = new Set(['workflow', 'attach', 'host', 'jobs', 'step', 'grep', 'show', 'o', 'workflows', 'out', 'redact-key', 'plan', 'resume', 'only', 'group', 'per-id', 'max-ids', 'ids-from', 'months']);
+const booleanFlags = new Set(['headed', 'browserbase', 'hold-bodies', 'raw', 'dry-run']);
+const repeatableFlags = new Set(['host', 'redact-key', 'only', 'group']);
 
 function usageError(message: string, command?: ParsedArgs['command']): CaptureError {
   return new CaptureError('workflow-invalid', message, `Usage:\n${command ? usage[command] : usageAll}`);
@@ -198,14 +211,6 @@ async function loadTargetOrThrow(name: string, command: ParsedArgs['command']): 
     );
   }
   return target;
-}
-
-/** Write to `<file>.tmp`, then rename over `file`, so a reader never sees half a file. */
-async function writeAtomic(file: string, text: string): Promise<void> {
-  await fs.mkdir(path.dirname(file), { recursive: true });
-  const tmp = `${file}.tmp`;
-  await fs.writeFile(tmp, text, 'utf8');
-  await fs.rename(tmp, file);
 }
 
 async function readWorkflowFile(file: string): Promise<Workflow> {
@@ -701,6 +706,133 @@ export async function mine(args: ParsedArgs): Promise<number> {
   return 0;
 }
 
+// ---------------------------------------------------------------------------------------------
+// snapshot
+// ---------------------------------------------------------------------------------------------
+
+function positiveInt(args: ParsedArgs, name: string): number | undefined {
+  const raw = flagString(args, name);
+  if (raw === undefined) return undefined;
+  if (!/^[1-9]\d*$/.test(raw)) throw usageError(`--${name} needs a positive whole number`, 'snapshot');
+  return Number(raw);
+}
+
+async function readJsonFile(file: string, what: string, code: 'plan-invalid' | 'workflow-invalid'): Promise<unknown> {
+  let text: string;
+  try {
+    text = await fs.readFile(file, 'utf8');
+  } catch (error) {
+    throw new CaptureError(code, `cannot read ${what} ${file}: ${(error as Error).message}`);
+  }
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    throw new CaptureError(code, `${file} is not valid JSON: ${(error as Error).message}`);
+  }
+}
+
+const nonProductionEnvironments = new Set(['staging', 'test', 'sandbox']);
+
+/** Walk the documented GET endpoints of a consented account once and write a resumable record under jobs/<site>/snapshots/<runId>/. */
+export async function snapshot(args: ParsedArgs): Promise<number> {
+  const targetName = positionalOrThrow(args, 'target');
+  const target = await loadTargetOrThrow(targetName, 'snapshot');
+  const site = siteIdOf(target);
+  const jobsDir = flagString(args, 'jobs') ?? 'jobs';
+  const dryRun = args.flags['dry-run'] === true;
+
+  const perId = flagString(args, 'per-id') ?? 'core';
+  if (perId !== 'core' && perId !== 'full') throw usageError('--per-id is core or full', 'snapshot');
+  const months = positiveInt(args, 'months') ?? snapshotMonthsDefault;
+  const maxIds = positiveInt(args, 'max-ids');
+  const only = flagList(args, 'only');
+  const groups = flagList(args, 'group');
+  const attach = flagString(args, 'attach');
+  const resume = flagString(args, 'resume');
+  if (!dryRun && !attach) throw usageError('--attach is required (the signed-in Chrome, e.g. http://127.0.0.1:9222)', 'snapshot');
+  if (resume && dryRun) throw usageError('--resume and --dry-run are exclusive', 'snapshot');
+
+  const planFile = flagString(args, 'plan') ?? path.join('snapshots', `${site}.json`);
+  const planJson = await readJsonFile(planFile, 'plan', 'plan-invalid');
+  const docFile = path.join('docs', 'apis', site, 'api.json');
+  let doc: { endpoints: { id: string; method: string }[] } | undefined;
+  try {
+    const parsed = JSON.parse(await fs.readFile(docFile, 'utf8')) as { endpoints?: unknown };
+    if (Array.isArray(parsed.endpoints)) doc = parsed as { endpoints: { id: string; method: string }[] };
+  } catch {
+    // Absent or unreadable: validate without it.
+  }
+  if (!doc) out(`note: ${docFile} not found; docId cross-checks skipped`);
+  const plan = validatePlan(planJson, doc);
+
+  const idsFromFile = flagString(args, 'ids-from');
+  let idsFrom: Record<string, string[]> | undefined;
+  if (idsFromFile) {
+    const raw = await readJsonFile(idsFromFile, '--ids-from file', 'workflow-invalid');
+    if (raw === null || typeof raw !== 'object' || Array.isArray(raw) || Object.values(raw).some((v) => !Array.isArray(v))) {
+      throw new CaptureError('workflow-invalid', `${idsFromFile} must be a JSON object of id name to an array of values`);
+    }
+    idsFrom = Object.fromEntries(Object.entries(raw as Record<string, unknown[]>).map(([k, v]) => [k, v.map(String)]));
+  }
+
+  const run = planRun(plan, { perId, ...(only.length > 0 ? { only } : {}), ...(groups.length > 0 ? { groups } : {}), ...(idsFrom ? { idsFrom } : {}) });
+
+  if (dryRun) {
+    const known = idsFrom ? Object.fromEntries(Object.entries(idsFrom).map(([k, v]) => [k, v.length])) : undefined;
+    out(describePlan(plan, run.selected, { perId, months, ...(known ? { knownCounts: known } : {}) }));
+    if (run.silent.length > 0) out(`\nalso fetched, not written, for ids or headers: ${run.silent.map((s) => s.endpoint.id).join(', ')}`);
+    out(`\norigins needing a tab: ${run.origins.join(', ')}`);
+    return 0;
+  }
+
+  const environment = (target as { environment?: string }).environment;
+  const production = !nonProductionEnvironments.has(environment ?? '');
+  if (production && !consentValid(target.snapshotConsent, new Date().toISOString().slice(0, 10))) {
+    throw new CaptureError(
+      'consent-missing',
+      `${target.name} is a production target and has no valid snapshotConsent`,
+      `Add { "by": ..., "on": "YYYY-MM-DD", "scope": "read" } as snapshotConsent in targets/${site}.json once the account owner has agreed (see docs/design/snapshot.md), or use --dry-run.`,
+    );
+  }
+
+  const fetcher = await cliDeps.attachFetcher(attach!, plan, { origins: run.origins });
+  let store: SnapshotStore | undefined;
+  try {
+    const runId = resume ?? cliDeps.newRunId();
+    store = resume ? await cliDeps.resumeStore(jobsDir, site, runId) : await cliDeps.createStore(jobsDir, site, runId, plan);
+    const summary = await cliDeps.runSnapshot({
+      plan,
+      site,
+      runId,
+      fetcher,
+      store,
+      ...(only.length > 0 ? { only } : {}),
+      ...(groups.length > 0 ? { groups } : {}),
+      perId,
+      ...(maxIds !== undefined ? { maxIds } : {}),
+      ...(idsFrom ? { idsFrom } : {}),
+      months,
+      now: () => new Date(),
+      sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+      log: (line) => out(line),
+      resume: resume !== undefined,
+    });
+    out(`run dir: ${summary.dir}`);
+    if (summary.status !== 'complete') {
+      throw new CaptureError(
+        'snapshot-incomplete',
+        `snapshot ${summary.status}${summary.reason ? `: ${summary.reason}` : ''}`,
+        `See ${path.join(summary.dir, 'manifest.json')} and failures.ndjson; fix the cause and rerun with --resume ${summary.runId}.`,
+      );
+    }
+    return 0;
+  } finally {
+    await store?.close().catch(() => undefined);
+    await fetcher.close().catch(() => undefined);
+  }
+}
+
+
 export async function main(argv: readonly string[]): Promise<number> {
   try {
     const args = parseArgs(argv);
@@ -715,6 +847,8 @@ export async function main(argv: readonly string[]): Promise<number> {
         return await build(args);
       case 'mine':
         return await mine(args);
+      case 'snapshot':
+        return await snapshot(args);
     }
   } catch (error) {
     if (error instanceof CaptureError) {

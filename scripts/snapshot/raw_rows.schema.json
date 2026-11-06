@@ -1,0 +1,14 @@
+[
+  { "name": "run_id", "type": "STRING", "mode": "REQUIRED" },
+  { "name": "site", "type": "STRING", "mode": "REQUIRED" },
+  { "name": "endpoint_id", "type": "STRING", "mode": "REQUIRED" },
+  { "name": "method", "type": "STRING", "mode": "NULLABLE" },
+  { "name": "path_template", "type": "STRING", "mode": "NULLABLE" },
+  { "name": "url", "type": "STRING", "mode": "NULLABLE" },
+  { "name": "fetched_at", "type": "TIMESTAMP", "mode": "NULLABLE" },
+  { "name": "status", "type": "INT64", "mode": "NULLABLE" },
+  { "name": "page_key", "type": "STRING", "mode": "NULLABLE" },
+  { "name": "record_index", "type": "INT64", "mode": "NULLABLE" },
+  { "name": "payload", "type": "STRING", "mode": "NULLABLE" },
+  { "name": "payload_sha256", "type": "STRING", "mode": "NULLABLE" }
+]

@@ -11,7 +11,7 @@ import { recordWithHumanDriver, siteIdOf, type RecorderLike } from '../../src/ap
 import { CaptureError } from '../../src/apidocs/errors.js';
 import { bundleMaxBytes } from '../../src/apidocs/limits.js';
 import { MinedCodeSchema, WorkflowSchema, type Counts, type RunId, type StepId, type Trace } from '../../src/apidocs/types.js';
-import { resolveTarget } from '../../src/target.js';
+import { consentValid, resolveTarget } from '../../src/target.js';
 
 // ---- helpers
 
@@ -595,6 +595,21 @@ test('resolveTarget rejects redactKeys that are not non-empty strings', () => {
   assert.throws(() => resolveTarget({ name: 'x', startUrl: 'https://x.example.com/', redactKeys: ['a', 3] as unknown as string[] }), /redactKeys must be an array of non-empty strings/);
   assert.throws(() => resolveTarget({ name: 'x', startUrl: 'https://x.example.com/', redactKeys: [''] }), /redactKeys/);
   assert.deepEqual(resolveTarget({ name: 'x', startUrl: 'https://x.example.com/', redactKeys: ['salesRep'] }).redactKeys, ['salesRep']);
+});
+
+test('resolveTarget accepts a valid snapshotConsent and rejects a malformed one; consentValid checks the dates', () => {
+  const base = { name: 'x', startUrl: 'https://x.example.com/' };
+  const consent = { by: 'owner', on: '2026-11-05', expires: '2026-12-31', scope: 'read' };
+  assert.deepEqual(resolveTarget({ ...base, snapshotConsent: consent }).snapshotConsent, consent);
+  const msg = /snapshotConsent must be \{ by, on: YYYY-MM-DD, expires\?: YYYY-MM-DD, scope \}/;
+  for (const bad of [{ ...consent, by: '' }, { ...consent, scope: 3 }, { ...consent, on: '11/05/2026' }, { ...consent, on: '2026-13-40' }, { ...consent, expires: 'soon' }, 'yes']) {
+    assert.throws(() => resolveTarget({ ...base, snapshotConsent: bad as never }), msg);
+  }
+  assert.equal(consentValid(consent, '2026-11-06'), true);
+  assert.equal(consentValid(consent, '2026-11-04'), false);
+  assert.equal(consentValid(consent, '2027-01-01'), false);
+  assert.equal(consentValid({ by: 'o', on: '2026-11-05', scope: 'read' }, '2030-01-01'), true);
+  assert.equal(consentValid(undefined, '2026-11-06'), false);
 });
 
 test('build warns about a non-completed latest run, passes redact keys, writes four files atomically', async () => {

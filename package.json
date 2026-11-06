@@ -21,7 +21,8 @@
     "apidocs:chrome": "tsx scripts/apidocs-chrome.ts",
     "apidocs:tour": "tsx scripts/apidocs-readonly-tour.ts",
     "apidocs:scan": "tsx scripts/apidocs-docs-scan.ts",
-    "apidocs:fixture": "tsx scripts/apidocs-fixture-site.ts"
+    "apidocs:fixture": "tsx scripts/apidocs-fixture-site.ts",
+    "snapshot:load": "tsx scripts/snapshot-load.ts"
   },
   "dependencies": {
     "playwright": "^1.48.0",

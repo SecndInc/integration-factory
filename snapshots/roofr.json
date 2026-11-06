@@ -1,0 +1,1729 @@
+{
+  "planVersion": 1,
+  "site": "roofr",
+  "origins": {
+    "app": "https://app.roofr.com"
+  },
+  "tabFor": {
+    "app": "app.roofr.com"
+  },
+  "loginPaths": [
+    "/login"
+  ],
+  "probe": {
+    "app": "/api/user/me"
+  },
+  "headers": {
+    "x-requested-with": {
+      "literal": "XMLHttpRequest"
+    },
+    "x-xsrf-token": {
+      "fromCookie": "XSRF-TOKEN",
+      "origin": "app",
+      "decode": "uri"
+    },
+    "team-id": {
+      "fromResponse": {
+        "endpoint": "user-me",
+        "path": "$.user.current_team.id"
+      }
+    }
+  },
+  "ids": {
+    "teamId": {
+      "endpoint": "user-me",
+      "path": "$.user.current_team.id"
+    },
+    "userId": {
+      "endpoint": "team-membership",
+      "path": "$[].user_id"
+    },
+    "jobId": {
+      "endpoint": "jobs",
+      "path": "$.data[].id"
+    },
+    "contactId": {
+      "endpoint": "contacts",
+      "path": "$.data[].id"
+    },
+    "invoiceId": {
+      "endpoint": "invoices-dashboard",
+      "path": "$.data[].id"
+    }
+  },
+  "endpoints": [
+    {
+      "id": "subscription",
+      "docId": "GET app.roofr.com/api/subscription",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/subscription",
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "group": "account"
+    },
+    {
+      "id": "team-membership",
+      "docId": "GET app.roofr.com/api/team/{teamId}/membership",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/team/{teamId}/membership",
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "records": "$",
+      "group": "account",
+      "yields": {
+        "userId": "$[].user_id"
+      }
+    },
+    {
+      "id": "authorization-permissions",
+      "docId": "GET app.roofr.com/api/authorization/permissions",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/authorization/permissions",
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "group": "account"
+    },
+    {
+      "id": "team",
+      "docId": "GET app.roofr.com/api/team",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/team",
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "records": "$",
+      "group": "account"
+    },
+    {
+      "id": "user-me",
+      "docId": "GET app.roofr.com/api/user/me",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/user/me",
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "group": "account"
+    },
+    {
+      "id": "subscription-addons",
+      "docId": "GET app.roofr.com/api/subscription-addons",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/subscription-addons",
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "records": "$",
+      "group": "account"
+    },
+    {
+      "id": "subscription-plan",
+      "docId": "GET app.roofr.com/api/subscription-plan",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/subscription-plan",
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "records": "$",
+      "group": "account"
+    },
+    {
+      "id": "team-suppliers",
+      "docId": "GET app.roofr.com/api/team/{teamId}/suppliers",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/team/{teamId}/suppliers",
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "records": "$",
+      "group": "account"
+    },
+    {
+      "id": "onboarding",
+      "docId": "GET app.roofr.com/api/onboarding",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/onboarding",
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "group": "account"
+    },
+    {
+      "id": "onboarding-action-job",
+      "docId": "GET app.roofr.com/api/onboarding-action/job",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/onboarding-action/job",
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "group": "account"
+    },
+    {
+      "id": "product-usage",
+      "docId": "GET app.roofr.com/api/product-usage",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/product-usage",
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "group": "account"
+    },
+    {
+      "id": "payment-settings",
+      "docId": "GET app.roofr.com/api/v1/team/{teamId}/payment-settings",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/v1/team/{teamId}/payment-settings",
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "group": "account"
+    },
+    {
+      "id": "vapi-bots",
+      "docId": "GET app.roofr.com/api/v1/voice-lead/vapi/bots",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/v1/voice-lead/vapi/bots",
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "records": "$",
+      "group": "account"
+    },
+    {
+      "id": "vapi-bots-onboarding",
+      "docId": "GET app.roofr.com/api/v1/voice-lead/vapi/bots/onboarding",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/v1/voice-lead/vapi/bots/onboarding",
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "group": "account"
+    },
+    {
+      "id": "vapi-bots-setup-status",
+      "docId": "GET app.roofr.com/api/v1/voice-lead/vapi/bots/setup-status",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/v1/voice-lead/vapi/bots/setup-status",
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "group": "account"
+    },
+    {
+      "id": "integrations",
+      "docId": "GET app.roofr.com/api/integrations",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/integrations",
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "records": "$.data",
+      "group": "account"
+    },
+    {
+      "id": "integrations-suppliers-settings",
+      "docId": "GET app.roofr.com/api/integrations/suppliers/settings",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/integrations/suppliers/settings",
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "group": "account"
+    },
+    {
+      "id": "jobs-settings",
+      "docId": "GET app.roofr.com/api/jobs/settings",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/jobs/settings",
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "group": "account"
+    },
+    {
+      "id": "jobs-filter-metadata",
+      "docId": "GET app.roofr.com/api/jobs/filter-metadata",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/jobs/filter-metadata",
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "group": "account"
+    },
+    {
+      "id": "jobs-workflow-user-preferences",
+      "docId": "GET app.roofr.com/api/jobs/workflow/user-preferences",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/jobs/workflow/user-preferences",
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "group": "account"
+    },
+    {
+      "id": "job-workflow-stages",
+      "docId": "GET app.roofr.com/api/job-workflows/stages",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/job-workflows/stages",
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "records": "$.data",
+      "group": "account"
+    },
+    {
+      "id": "calendar-settings",
+      "docId": "GET app.roofr.com/api/calendar/settings",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/calendar/settings",
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "group": "account"
+    },
+    {
+      "id": "calendar-user-settings",
+      "docId": "GET app.roofr.com/api/calendar/user/settings",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/calendar/user/settings",
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "group": "account"
+    },
+    {
+      "id": "calendar-event-onboarded",
+      "docId": "GET app.roofr.com/api/calendar/event/onboarded",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/calendar/event/onboarded",
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "group": "account"
+    },
+    {
+      "id": "unit",
+      "docId": "GET app.roofr.com/api/unit",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/unit",
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "group": "account"
+    },
+    {
+      "id": "catalog-stats",
+      "docId": "GET app.roofr.com/api/catalog/stats",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/catalog/stats",
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "group": "account"
+    },
+    {
+      "id": "automations-summary",
+      "docId": "GET app.roofr.com/api/automations/summary",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/automations/summary",
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "group": "account"
+    },
+    {
+      "id": "file-manager-documents-usage",
+      "docId": "GET app.roofr.com/api/file_manager/documents/usage",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/file_manager/documents/usage",
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "group": "account"
+    },
+    {
+      "id": "file-manager-folders",
+      "docId": "GET app.roofr.com/api/file_manager/folders",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/file_manager/folders",
+      "query": {
+        "sort_by": "created_at",
+        "sort_direction": "desc"
+      },
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "records": "$.data",
+      "group": "account"
+    },
+    {
+      "id": "proposal-usage",
+      "docId": "GET app.roofr.com/api/proposal/usage",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/proposal/usage",
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "group": "account"
+    },
+    {
+      "id": "reports-usage-diy",
+      "docId": "GET app.roofr.com/api/reports-usage/diy",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/reports-usage/diy",
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "group": "account"
+    },
+    {
+      "id": "reports-usage-report-service",
+      "docId": "GET app.roofr.com/api/reports-usage/report-service",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/reports-usage/report-service",
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "group": "account"
+    },
+    {
+      "id": "notification-sms-usage",
+      "docId": "GET app.roofr.com/api/notification/sms/usage",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/notification/sms/usage",
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "group": "account"
+    },
+    {
+      "id": "notification-unread-count",
+      "docId": "GET app.roofr.com/api/v1/notification-app/unread-count",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/v1/notification-app/unread-count",
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "group": "account"
+    },
+    {
+      "id": "crews",
+      "docId": "GET app.roofr.com/api/crews",
+      "skip": "403 for this account in the 2026-11-06 smoke while the session probe was alive; the app never called it on the read-only tour",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/crews",
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "records": "$.data",
+      "group": "account"
+    },
+    {
+      "id": "jobs-tags",
+      "docId": "GET app.roofr.com/api/jobs/tags",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/jobs/tags",
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "records": "$.data",
+      "group": "account"
+    },
+    {
+      "id": "jobs-assignees",
+      "docId": "GET app.roofr.com/api/jobs/assignees",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/jobs/assignees",
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "records": "$",
+      "group": "account"
+    },
+    {
+      "id": "jobs-cards",
+      "docId": "GET app.roofr.com/api/jobs/cards",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/jobs/cards",
+      "query": {
+        "filter[include_unassigned_lead_sources]": true,
+        "filter[include_unassigned_tags]": true
+      },
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "records": "$",
+      "group": "account"
+    },
+    {
+      "id": "jobs-summary",
+      "docId": "GET app.roofr.com/api/jobs/summary",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/jobs/summary",
+      "query": {
+        "filter[include_unassigned_lead_sources]": true,
+        "filter[include_unassigned_tags]": true
+      },
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "group": "account"
+    },
+    {
+      "id": "inbox-threads-summary",
+      "docId": "GET app.roofr.com/api/inbox/threads/summary",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/inbox/threads/summary",
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "group": "account"
+    },
+    {
+      "id": "quickbooks-settings",
+      "docId": "GET app.roofr.com/api/integration/quickbooks/settings",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/integration/quickbooks/settings",
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "group": "account",
+      "expect404": true
+    },
+    {
+      "id": "roofr-sites",
+      "docId": "GET app.roofr.com/api/roofr-sites",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/roofr-sites",
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "group": "account",
+      "expect404": true
+    },
+    {
+      "id": "payabli-settings",
+      "docId": "GET app.roofr.com/api/v1/team/{teamId}/payabli/settings",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/v1/team/{teamId}/payabli/settings",
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "group": "account",
+      "expect404": true
+    },
+    {
+      "id": "quickbooks-customer-link",
+      "docId": "GET app.roofr.com/api/integration/quickbooks/customers/{customerId}/link",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/integration/quickbooks/customers/{customerId}/link",
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "group": "account",
+      "skip": "QuickBooks is not connected on this account (settings answer 404), so one link lookup per contact would be about 1,586 expected 404s"
+    },
+    {
+      "id": "invoice-quickbooks",
+      "docId": "GET app.roofr.com/api/v1/invoice/quickbooks/{quickbookId}",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/v1/invoice/quickbooks/{quickbookId}",
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "group": "account",
+      "skip": "path param quickbookId has no id source in the docs (the only binding points at an invoice id, a coincidence of values); QuickBooks is not connected"
+    },
+    {
+      "id": "notification-push-subscriptions",
+      "docId": "GET app.roofr.com/api/notification/push-subscriptions",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/notification/push-subscriptions",
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "group": "account",
+      "skip": "rows are browser push subscriptions (endpoint URL and encryption keys): credentials, not account data"
+    },
+    {
+      "id": "reporting-job-report",
+      "docId": "GET app.roofr.com/api/reporting/job-report",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/reporting/job-report",
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "group": "account",
+      "skip": "response is a signed embed token (jwtToken at three key paths), not account data"
+    },
+    {
+      "id": "jobs",
+      "docId": "GET app.roofr.com/api/jobs",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/jobs",
+      "query": {
+        "filter[include_unassigned_lead_sources]": true,
+        "filter[include_unassigned_tags]": true
+      },
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "laravel-meta",
+        "pageParam": "page"
+      },
+      "records": "$.data",
+      "total": "$.meta.total",
+      "group": "lists",
+      "yields": {
+        "jobId": "$.data[].id"
+      }
+    },
+    {
+      "id": "contacts",
+      "docId": "GET app.roofr.com/api/contacts",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/contacts",
+      "query": {
+        "include[]": "jobContactsCount"
+      },
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "laravel-meta",
+        "pageParam": "page",
+        "perPageParam": "per_page",
+        "perPage": 50
+      },
+      "records": "$.data",
+      "total": "$.meta.total",
+      "group": "lists",
+      "yields": {
+        "contactId": "$.data[].id"
+      }
+    },
+    {
+      "id": "proposals",
+      "docId": "GET app.roofr.com/api/proposal",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/proposal",
+      "query": {
+        "type": "proposal",
+        "sort": "-created_at"
+      },
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "cursor",
+        "cursorParam": "cursor",
+        "nextPath": "$.meta.next_cursor",
+        "perPageParam": "perPage",
+        "perPage": 50
+      },
+      "records": "$.data",
+      "group": "lists"
+    },
+    {
+      "id": "invoices-dashboard",
+      "docId": "GET app.roofr.com/api/v1/team/{teamId}/invoices/dashboard",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/v1/team/{teamId}/invoices/dashboard",
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "laravel-flat",
+        "pageParam": "page",
+        "perPageParam": "per_page",
+        "perPage": 50
+      },
+      "records": "$.data",
+      "total": "$.total",
+      "group": "lists",
+      "yields": {
+        "invoiceId": "$.data[].id"
+      }
+    },
+    {
+      "id": "work-orders",
+      "docId": "GET app.roofr.com/api/work-orders",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/work-orders",
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "laravel-meta",
+        "pageParam": "page",
+        "perPageParam": "per_page",
+        "perPage": 50
+      },
+      "records": "$.data",
+      "total": "$.meta.total",
+      "group": "lists"
+    },
+    {
+      "id": "automations",
+      "docId": "GET app.roofr.com/api/automations",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/automations",
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "laravel-meta",
+        "pageParam": "page"
+      },
+      "records": "$.data",
+      "total": "$.meta.total",
+      "group": "lists"
+    },
+    {
+      "id": "task-due",
+      "docId": "GET app.roofr.com/api/task/due",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/task/due",
+      "query": {
+        "user_id": {
+          "fromId": "userId"
+        }
+      },
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "laravel-meta",
+        "pageParam": "page"
+      },
+      "records": "$.data",
+      "total": "$.meta.total",
+      "group": "lists"
+    },
+    {
+      "id": "task-upcoming",
+      "docId": "GET app.roofr.com/api/task/upcoming",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/task/upcoming",
+      "query": {
+        "user_id": {
+          "fromId": "userId"
+        }
+      },
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "laravel-meta",
+        "pageParam": "page"
+      },
+      "records": "$.data",
+      "total": "$.meta.total",
+      "group": "lists"
+    },
+    {
+      "id": "calendar-events-past",
+      "docId": "GET app.roofr.com/api/calendar/event/past",
+      "skip": "the page calls it only with context_type and context_id (one job or contact); without them it answered 403 on 2026-11-06. Events come through calendar-events by month",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/calendar/event/past",
+      "query": {
+        "timezone": "UTC"
+      },
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "laravel-meta",
+        "pageParam": "page"
+      },
+      "records": "$.data",
+      "total": "$.meta.total",
+      "group": "lists"
+    },
+    {
+      "id": "calendar-events-upcoming",
+      "docId": "GET app.roofr.com/api/calendar/event/upcoming",
+      "skip": "the page calls it only with context_type and context_id (one job or contact); without them it answered 403 on 2026-11-06. Events come through calendar-events by month",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/calendar/event/upcoming",
+      "query": {
+        "timezone": "UTC"
+      },
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "laravel-meta",
+        "pageParam": "page"
+      },
+      "records": "$.data",
+      "total": "$.meta.total",
+      "group": "lists"
+    },
+    {
+      "id": "calendar-event-types",
+      "docId": "GET app.roofr.com/api/calendar/event_type",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/calendar/event_type",
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "laravel-meta",
+        "pageParam": "page"
+      },
+      "records": "$.data",
+      "group": "lists"
+    },
+    {
+      "id": "catalog-price-list-items",
+      "docId": "GET app.roofr.com/api/catalog/price-list-item",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/catalog/price-list-item",
+      "query": {
+        "includes[]": "cogs"
+      },
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "laravel-meta",
+        "pageParam": "page",
+        "perPageParam": "per_page",
+        "perPage": 50
+      },
+      "records": "$.data",
+      "total": "$.meta.total",
+      "group": "lists"
+    },
+    {
+      "id": "leads-sources",
+      "docId": "GET app.roofr.com/api/leads/sources",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/leads/sources",
+      "query": {
+        "per_page": 500
+      },
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "records": "$.data",
+      "group": "lists"
+    },
+    {
+      "id": "contact-types",
+      "docId": "GET app.roofr.com/api/contact-types",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/contact-types",
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "laravel-meta",
+        "pageParam": "page"
+      },
+      "records": "$.data",
+      "group": "lists"
+    },
+    {
+      "id": "material-orders",
+      "docId": "GET app.roofr.com/api/material-order",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/material-order",
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "laravel-meta",
+        "pageParam": "pageNumber",
+        "perPageParam": "perPage",
+        "perPage": 50
+      },
+      "records": "$.data",
+      "group": "lists"
+    },
+    {
+      "id": "job-workflows",
+      "docId": "GET app.roofr.com/api/job-workflows",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/job-workflows",
+      "query": {
+        "include_category_details": 0
+      },
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "laravel-meta",
+        "pageParam": "page"
+      },
+      "records": "$.data",
+      "group": "lists"
+    },
+    {
+      "id": "file-manager-documents",
+      "docId": "GET app.roofr.com/api/file_manager/documents",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/file_manager/documents",
+      "query": {
+        "sort_by": "created_at",
+        "sort_direction": "desc"
+      },
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "cursor",
+        "cursorParam": "cursor",
+        "nextPath": "$.meta.next_cursor",
+        "perPageParam": "per_page",
+        "perPage": 50
+      },
+      "records": "$.data",
+      "group": "lists"
+    },
+    {
+      "id": "inbox-threads",
+      "docId": "GET app.roofr.com/api/inbox/threads",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/inbox/threads",
+      "query": {
+        "filter[direction]": "inbound"
+      },
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "cursor",
+        "cursorParam": "cursor",
+        "nextPath": "$.meta.next_cursor"
+      },
+      "records": "$.data",
+      "group": "lists"
+    },
+    {
+      "id": "jobs-activity",
+      "docId": "GET app.roofr.com/api/jobs/activity",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/jobs/activity",
+      "query": {
+        "user_id": {
+          "fromId": "userId"
+        }
+      },
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "cursor",
+        "cursorParam": "cursor",
+        "nextPath": "$.meta.next_cursor"
+      },
+      "records": "$.data",
+      "group": "lists"
+    },
+    {
+      "id": "pdf-signer-documents",
+      "docId": "GET app.roofr.com/api/pdf-signer/documents",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/pdf-signer/documents",
+      "query": {
+        "sort_by": "created_at",
+        "sort_direction": "desc"
+      },
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "cursor",
+        "cursorParam": "cursor",
+        "nextPath": "$.meta.next_cursor",
+        "perPageParam": "per_page",
+        "perPage": 50
+      },
+      "records": "$.data",
+      "group": "lists"
+    },
+    {
+      "id": "pdf-signer-templates",
+      "docId": "GET app.roofr.com/api/pdf-signer/templates",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/pdf-signer/templates",
+      "query": {
+        "statuses[]": "ready",
+        "sort_by": "created_at",
+        "sort_direction": "desc"
+      },
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "cursor",
+        "cursorParam": "cursor",
+        "nextPath": "$.meta.next_cursor",
+        "perPageParam": "per_page",
+        "perPage": 50
+      },
+      "records": "$.data",
+      "group": "lists"
+    },
+    {
+      "id": "report-envelopes-jobs",
+      "docId": "GET app.roofr.com/api/report-envelopes/jobs",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/report-envelopes/jobs",
+      "query": {
+        "filter[with_report_envelopes_only]": true
+      },
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "laravel-meta",
+        "pageParam": "page",
+        "perPageParam": "per_page",
+        "perPage": 50
+      },
+      "records": "$.data",
+      "group": "lists"
+    },
+    {
+      "id": "notification-sms-phone",
+      "docId": "GET app.roofr.com/api/notification/sms/phone",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/notification/sms/phone",
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "laravel-meta",
+        "pageParam": "page"
+      },
+      "records": "$.data",
+      "total": "$.meta.total",
+      "group": "lists"
+    },
+    {
+      "id": "home-metrics-invoices",
+      "docId": "GET app.roofr.com/api/home/metrics/invoices",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/home/metrics/invoices",
+      "query": {
+        "user_id": {
+          "fromId": "userId"
+        }
+      },
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "group": "lists"
+    },
+    {
+      "id": "home-metrics-jobs",
+      "docId": "GET app.roofr.com/api/home/metrics/jobs",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/home/metrics/jobs",
+      "query": {
+        "user_id": {
+          "fromId": "userId"
+        }
+      },
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "group": "lists"
+    },
+    {
+      "id": "home-metrics-proposals",
+      "docId": "GET app.roofr.com/api/home/metrics/proposals",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/home/metrics/proposals",
+      "query": {
+        "user_id": {
+          "fromId": "userId"
+        }
+      },
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "group": "lists"
+    },
+    {
+      "id": "calendar-events",
+      "docId": "GET app.roofr.com/api/calendar/event",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/calendar/event",
+      "query": {
+        "user_id[]": {
+          "fromId": "userId"
+        },
+        "timezone": "UTC"
+      },
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "records": "$.data",
+      "range": {
+        "format": "sql-datetime",
+        "startParam": "start_date_time",
+        "endParam": "end_date_time"
+      },
+      "group": "calendar-range"
+    },
+    {
+      "id": "job-detail",
+      "docId": "GET app.roofr.com/api/job/{jobId}",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/job/{jobId}",
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "group": "per-job-core",
+      "perId": "core"
+    },
+    {
+      "id": "job-contacts",
+      "docId": "GET app.roofr.com/api/job/{jobId}/contacts",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/job/{jobId}/contacts",
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "records": "$.data",
+      "group": "per-job-core",
+      "perId": "core"
+    },
+    {
+      "id": "job-activities",
+      "docId": "GET app.roofr.com/api/job/{jobId}/activities",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/job/{jobId}/activities",
+      "query": {
+        "strategy": "activities_grouping_pagination"
+      },
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "cursor",
+        "cursorParam": "cursor",
+        "nextPath": "$.next_cursor",
+        "perPageParam": "per_page",
+        "perPage": 50
+      },
+      "records": "$.data",
+      "group": "per-job-core",
+      "perId": "core"
+    },
+    {
+      "id": "job-attachments",
+      "docId": "GET app.roofr.com/api/job/{jobId}/attachments",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/job/{jobId}/attachments",
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "laravel-meta",
+        "pageParam": "page",
+        "perPageParam": "page_size",
+        "perPage": 50
+      },
+      "records": "$.data",
+      "total": "$.meta.total",
+      "group": "per-job-core",
+      "perId": "core"
+    },
+    {
+      "id": "job-tags",
+      "docId": "GET app.roofr.com/api/jobs/{jobId}/tags",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/jobs/{jobId}/tags",
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "records": "$.data",
+      "group": "per-job-core",
+      "perId": "core"
+    },
+    {
+      "id": "job-costing",
+      "docId": "GET app.roofr.com/api/jobs/{jobId}/costing",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/jobs/{jobId}/costing",
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "group": "per-job-core",
+      "perId": "core"
+    },
+    {
+      "id": "job-invoices",
+      "docId": "GET app.roofr.com/api/v1/job/{jobId}/invoices",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/v1/job/{jobId}/invoices",
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "records": "$.data",
+      "group": "per-job-core",
+      "perId": "core"
+    },
+    {
+      "id": "job-folders",
+      "docId": "GET app.roofr.com/api/job/{jobId}/folders",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/job/{jobId}/folders",
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "records": "$.data",
+      "group": "per-job-full",
+      "perId": "full"
+    },
+    {
+      "id": "job-material-orders",
+      "docId": "GET app.roofr.com/api/job/{jobId}/material-order",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/job/{jobId}/material-order",
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "records": "$",
+      "group": "per-job-full",
+      "perId": "full"
+    },
+    {
+      "id": "job-report-envelopes",
+      "docId": "GET app.roofr.com/api/job/{jobId}/report-envelopes",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/job/{jobId}/report-envelopes",
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "records": "$.data",
+      "group": "per-job-full",
+      "perId": "full"
+    },
+    {
+      "id": "job-report-envelopes-summary",
+      "docId": "GET app.roofr.com/api/job/{jobId}/report-envelopes/summary",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/job/{jobId}/report-envelopes/summary",
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "group": "per-job-full",
+      "perId": "full"
+    },
+    {
+      "id": "job-value-suggestion",
+      "docId": "GET app.roofr.com/api/job/{jobId}/value-suggestion",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/job/{jobId}/value-suggestion",
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "group": "per-job-full",
+      "perId": "full"
+    },
+    {
+      "id": "job-costing-proposals",
+      "docId": "GET app.roofr.com/api/jobs/{jobId}/costing/proposals",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/jobs/{jobId}/costing/proposals",
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "records": "$",
+      "group": "per-job-full",
+      "perId": "full"
+    },
+    {
+      "id": "contact-detail",
+      "docId": "GET app.roofr.com/api/contacts/{contactId}",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/contacts/{contactId}",
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "group": "per-contact",
+      "perId": "core"
+    },
+    {
+      "id": "invoice-detail",
+      "docId": "GET app.roofr.com/api/v1/invoice/{invoiceId}",
+      "origin": "app",
+      "method": "GET",
+      "path": "/api/v1/invoice/{invoiceId}",
+      "headers": [
+        "x-requested-with",
+        "x-xsrf-token",
+        "team-id"
+      ],
+      "paginator": {
+        "kind": "none"
+      },
+      "group": "per-invoice",
+      "perId": "core"
+    }
+  ]
+}
