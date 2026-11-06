@@ -34,6 +34,11 @@ export interface IntegrationTarget {
    * key paths that need this. Merged with `apidocs build --redact-key`.
    */
   redactKeys?: string[];
+  /**
+   * The account owner's consent to a read-only snapshot: who gave it, the ISO date (YYYY-MM-DD) it was
+   * given, an optional ISO expiry, and the scope (e.g. 'read').
+   */
+  snapshotConsent?: { by: string; on: string; expires?: string; scope: string };
 }
 
 export interface ResolvedTarget extends IntegrationTarget {
@@ -47,6 +52,9 @@ export function resolveTarget(raw: IntegrationTarget): ResolvedTarget {
   if (raw.redactKeys !== undefined && (!Array.isArray(raw.redactKeys) || raw.redactKeys.some((k) => typeof k !== 'string' || k.trim() === ''))) {
     throw new Error('target.redactKeys must be an array of non-empty strings');
   }
+  if (raw.snapshotConsent !== undefined && !isConsentShape(raw.snapshotConsent)) {
+    throw new Error('target.snapshotConsent must be { by, on: YYYY-MM-DD, expires?: YYYY-MM-DD, scope }');
+  }
   const parsed = parseHttpUrl(raw.startUrl, 'target.startUrl');
   const loginUrl = raw.loginUrl ? parseHttpUrl(raw.loginUrl, 'target.loginUrl').toString() : parsed.toString();
   return {
@@ -56,6 +64,25 @@ export function resolveTarget(raw: IntegrationTarget): ResolvedTarget {
     loginUrl,
     loginRecipe: { loginUrl, ...(raw.login ?? {}) },
   };
+}
+
+const isoDate = /^\d{4}-\d{2}-\d{2}$/;
+
+function isRealIsoDate(v: unknown): v is string {
+  return typeof v === 'string' && isoDate.test(v) && !Number.isNaN(Date.parse(`${v}T00:00:00Z`)) && new Date(`${v}T00:00:00Z`).toISOString().startsWith(v);
+}
+
+function isConsentShape(c: unknown): c is NonNullable<IntegrationTarget['snapshotConsent']> {
+  if (typeof c !== 'object' || c === null || Array.isArray(c)) return false;
+  const o = c as Record<string, unknown>;
+  const text = (v: unknown) => typeof v === 'string' && v.trim() !== '';
+  return text(o.by) && text(o.scope) && isRealIsoDate(o.on) && (o.expires === undefined || isRealIsoDate(o.expires));
+}
+
+/** True when the consent has started (`on` <= today) and has not lapsed (`expires` >= today when present). `today` is YYYY-MM-DD. */
+export function consentValid(consent: IntegrationTarget['snapshotConsent'] | undefined, today: string): boolean {
+  if (!consent || !isConsentShape(consent)) return false;
+  return consent.on <= today && (consent.expires === undefined || consent.expires >= today);
 }
 
 export function targetFromUrl(name: string, startUrl: string, opts: { host?: string; loginUrl?: string; plan?: string } = {}): ResolvedTarget {

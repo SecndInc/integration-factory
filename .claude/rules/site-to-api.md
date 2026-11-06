@@ -1,6 +1,6 @@
 # Site to API: the pipeline
 
-Turning a web app into documented API endpoints is six stages. Each has one command, one output, one done check, and a skill that walks it. `/site-to-api` is the router.
+Turning a web app into documented API endpoints is six stages, plus a seventh, consented one for pulling account data. Each has one command, one output, one done check, and (stages 1 to 6) a skill that walks it. `/site-to-api` is the router.
 
 | # | Stage | Command | Output | Done check | Skill |
 | --- | --- | --- | --- | --- | --- |
@@ -10,6 +10,7 @@ Turning a web app into documented API endpoints is six stages. Each has one comm
 | 4 | Inspect | `npm run apidocs -- inspect <trace> [--step id] [--grep s]` | nothing on disk | the endpoints a step should have produced are in its tally | `/apidocs-record` |
 | 5 | Build | `npm run apidocs -- mine <site>` (optional, bundles only), then `npm run apidocs -- build <site>` | `docs/apis/<site>/{README.md,api.json,index.html,openapi.json}` | Redocly lint has no errors; HTML opens offline | `/apidocs-build` |
 | 6 | Review | `npm run apidocs:scan -- <site>` | `docs/apis/<site>/REVIEW.json` | verdict `pass`; then branch, commit, PR with the scan output and a screenshot | `/apidocs-build` |
+| 7 | Snapshot (consented) | `npm run apidocs -- snapshot <site> --attach http://127.0.0.1:<port> [--dry-run] [--resume <run_id>]`, then `npm run snapshot:load -- <site>` | `jobs/<site>/snapshots/<run_id>/` then the `snapshot_<site>` dataset | manifest `complete`, `totals matched T of T`; load-report verdict `pass` | (no skill; `docs/design/snapshot.md`) |
 
 ## Where things live
 
@@ -17,6 +18,7 @@ Turning a web app into documented API endpoints is six stages. Each has one comm
 - `src/apidocs-cli.ts`: `record | inspect | har | mine | build`. Exit codes: 0 ok, 1 usage or unexpected, 2 browser unreachable, 3 trace unreadable, 4 run failed.
 - `scripts/apidocs-*.ts`: entry points a person or agent runs (`chrome`, `readonly-tour`, `docs-scan`, `fixture-site`).
 - `targets/<site>.json`: `name`, `startUrl`, optional `host`, `environment`, `redactKeys` (key names the scan flagged; their values never reach the docs).
+- `snapshots/<site>.json`: committed snapshot plan files (tables, endpoints, pagination; no values). `scripts/snapshot-load.ts`: the only path from `jobs/<site>/snapshots/` to BigQuery.
 - `workflows/<site>/`: committed. `jobs/<site>/`: never committed. `docs/apis/<site>/`: committed after review.
 - Design: `docs/design/api-docs.md` (pipeline, data shapes, §9 layout), `docs/design/agent-guidance.md` (this package).
 

@@ -122,6 +122,140 @@ test('guard-bash: write workflows record only against staging/test/sandbox targe
   assert.equal(run('guard-bash.mjs', bash('npx tsx src/apidocs-cli.ts record widgetry --workflow workflows/widgetry/create-item.json'), root).status, 2, 'the direct CLI spelling is covered');
 });
 
+/** A local YYYY-MM-DD, `days` from today (the hook compares against the local date). */
+function dayOffset(days: number) {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+test('guard-bash: a snapshot of a production target needs a valid snapshotConsent', async () => {
+  const root = await project();
+  const target = (name: string, extra: Record<string, unknown>) =>
+    fs.writeFile(path.join(root, 'targets', `${name}.json`), JSON.stringify({ name, startUrl: 'http://127.0.0.1:1/', ...extra }));
+  const consent = { by: 'owner@example.test', on: dayOffset(-1), scope: 'read' };
+  await target('noconsent', { environment: 'production' });
+  await target('consented', { environment: 'production', snapshotConsent: consent });
+  await target('open-ended', { snapshotConsent: { ...consent, expires: dayOffset(0) } });
+  await target('future', { environment: 'production', snapshotConsent: { ...consent, on: dayOffset(1) } });
+  await target('expired', { environment: 'production', snapshotConsent: { ...consent, expires: dayOffset(-1) } });
+  await target('nobody', { environment: 'production', snapshotConsent: { ...consent, by: ' ' } });
+  await target('noscope', { environment: 'production', snapshotConsent: { ...consent, scope: '' } });
+  await target('baddate', { environment: 'production', snapshotConsent: { ...consent, on: '2026-13-40' } });
+
+  const snap = (site: string, tail = '--attach http://127.0.0.1:9222') => bash(`npm run apidocs -- snapshot ${site} ${tail}`);
+  for (const site of ['noconsent', 'future', 'expired', 'nobody', 'noscope', 'baddate', 'widgetry', 'missing-target']) {
+    const r = run('guard-bash.mjs', snap(site), root);
+    assert.equal(r.status, 2, site);
+    assert.match(r.stderr, new RegExp(`${site} is production and its target has no valid snapshotConsent \\{ by, on, scope \\}`), site);
+    assert.match(r.stderr, new RegExp(`record the owner's consent in targets/${site}\\.json first`), site);
+  }
+  assert.match(run('guard-bash.mjs', snap('future'), root).stderr, /in the future/);
+  assert.match(run('guard-bash.mjs', snap('expired'), root).stderr, /expired/);
+  for (const site of ['consented', 'open-ended']) assert.equal(run('guard-bash.mjs', snap(site), root).status, 0, site);
+  assert.equal(run('guard-bash.mjs', snap('noconsent', '--dry-run --attach http://127.0.0.1:9222'), root).status, 0, '--dry-run is always allowed');
+  assert.equal(run('guard-bash.mjs', snap('staging'), root).status, 0, 'a staging target needs no consent');
+  assert.equal(run('guard-bash.mjs', snap('noconsent', '--resume r1 --per-id core'), root).status, 2, 'a flag value is not the site');
+  assert.equal(run('guard-bash.mjs', bash('npx tsx src/apidocs-cli.ts snapshot noconsent --attach http://127.0.0.1:9222'), root).status, 2, 'the direct CLI spelling is covered');
+  assert.equal(run('guard-bash.mjs', bash('tsx src/apidocs-cli.ts snapshot consented --attach http://127.0.0.1:9222'), root).status, 0);
+  assert.equal(run('guard-bash.mjs', bash('npm run apidocs -- snapshot --attach http://127.0.0.1:9222 noconsent'), root).status, 2, 'flags before the site');
+  assert.equal(run('guard-bash.mjs', bash('npm run snapshot:load -- noconsent'), root).status, 0, 'the loader is not the snapshot command');
+
+  // The consent is read from the checkout the command runs in.
+  const other = await project();
+  const cmd = `cd ${other.replace(/\\/g, '/')} && npm run apidocs -- snapshot widgetry --attach http://127.0.0.1:9222`;
+  assert.equal(run('guard-bash.mjs', { ...bash(cmd), cwd: root }, root).status, 2);
+  await fs.writeFile(path.join(other, 'targets', 'widgetry.json'), JSON.stringify({ name: 'W', startUrl: 'http://127.0.0.1:1/', environment: 'production', snapshotConsent: consent }));
+  assert.equal(run('guard-bash.mjs', { ...bash(cmd), cwd: root }, root).status, 0);
+});
+
+test('guard-bash: snapshot NDJSON never enters git', async () => {
+  const root = await project();
+  for (const cmd of ['git add jobs/x/snapshots/r/jobs.ndjson', 'git add out.ndjson', 'git add -f data/Rows.NDJSON', 'git commit -m "x" out.ndjson']) {
+    assert.equal(run('guard-bash.mjs', bash(cmd), root).status, 2, cmd);
+  }
+  const r = run('guard-bash.mjs', bash('git add out.ndjson'), root);
+  assert.match(r.stderr, /snapshot:load/);
+  assert.equal(run('guard-bash.mjs', bash('git add snapshots/roofr.json'), root).status, 0);
+  assert.equal(run('guard-bash.mjs', bash('git commit -m "snapshot: .ndjson stays local"'), root).status, 0, 'words in a commit message are not pathspecs');
+});
+
+test('guard-bash: snapshot data leaves the machine only through snapshot:load', async () => {
+  const root = await project();
+  for (const cmd of [
+    'gcloud storage cp jobs/roofr/snapshots/r/jobs.ndjson gs://b/',
+    'gcloud storage rsync -r jobs\\roofr gs://b/x',
+    'bq load ds.t jobs/roofr/x.ndjson',
+    'bq --location=northamerica-northeast1 load --source_format=NEWLINE_DELIMITED_JSON ds.t ./jobs/roofr/x.ndjson',
+    'gsutil -m cp -r jobs/roofr gs://b',
+    'gsutil mv jobs/roofr/x.ndjson gs://b/',
+  ]) {
+    const r = run('guard-bash.mjs', bash(cmd), root);
+    assert.equal(r.status, 2, cmd);
+    assert.match(r.stderr, /npm run snapshot:load/, cmd);
+  }
+  for (const cmd of [
+    'gcloud storage cp scripts/snapshot/bucket-lifecycle.json gs://b/',
+    'gcloud storage cp gs://b/jobs/x.ndjson ./tmp/',
+    'gsutil -m cp -r scripts/snapshot gs://b',
+    'bq load ds.t scripts/snapshot/raw_rows.schema.json',
+    'bq query --use_legacy_sql=false "select 1"',
+    'npm run snapshot:load -- roofr',
+    'cp jobs/roofr/x.ndjson /tmp/y',
+  ]) {
+    assert.equal(run('guard-bash.mjs', bash(cmd), root).status, 0, cmd);
+  }
+});
+
+test('guard-bash: datasets and buckets are created only in northamerica-northeast1', async () => {
+  const root = await project();
+  const ok = [
+    'bq --location=northamerica-northeast1 mk --dataset p:ds',
+    'bq --location northamerica-northeast1 mk -d p:ds',
+    'bq mk --dataset --location=NorthAmerica-Northeast1 p:ds',
+    'gcloud storage buckets create gs://b --location=northamerica-northeast1',
+    'gcloud storage buckets create gs://b -l northamerica-northeast1 --uniform-bucket-level-access',
+    'gsutil mb -l northamerica-northeast1 gs://b',
+    'bq mk --table p:ds.t schema.json',
+  ];
+  for (const cmd of ok) assert.equal(run('guard-bash.mjs', bash(cmd), root).status, 0, cmd);
+  const bad = [
+    'bq mk --dataset p:ds',
+    'bq --location=US mk -d p:ds',
+    'bq mk p:ds',
+    'bq mk -d -l northamerica-northeast1 p:ds', // bq's -l is --label, not a location
+    'gcloud storage buckets create gs://b',
+    'gcloud storage buckets create gs://b --location=us-central1',
+    'gsutil mb gs://b',
+    'gsutil mb -l US gs://b',
+  ];
+  for (const cmd of bad) {
+    const r = run('guard-bash.mjs', bash(cmd), root);
+    assert.equal(r.status, 2, cmd);
+    assert.match(r.stderr, /northamerica-northeast1/, cmd);
+  }
+});
+
+test('guard-bash: nothing is granted to allUsers or allAuthenticatedUsers', async () => {
+  const root = await project();
+  for (const cmd of [
+    'gcloud storage buckets add-iam-policy-binding gs://b --member=allUsers --role=roles/storage.objectViewer',
+    'gcloud storage buckets add-iam-policy-binding gs://b --member allAuthenticatedUsers --role roles/storage.objectViewer',
+    'gsutil iam ch allUsers:objectViewer gs://b',
+    'bq add-iam-policy-binding --member=allAuthenticatedUsers --role=roles/bigquery.dataViewer p:ds.t',
+    `bq update --source '{"access":[{"role":"READER","specialGroup":"allAuthenticatedUsers"}]}' p:ds`,
+    'gcloud projects add-iam-policy-binding p --member="allUsers" --role=roles/viewer',
+  ]) {
+    const r = run('guard-bash.mjs', bash(cmd), root);
+    assert.equal(r.status, 2, cmd);
+    assert.match(r.stderr, /public/, cmd);
+  }
+  assert.equal(run('guard-bash.mjs', bash('gcloud storage buckets add-iam-policy-binding gs://b --member=user:someone@example.test --role=roles/storage.objectViewer'), root).status, 0);
+  // Limits of the hook: it reads the command line, not files. An ACL file passed with --source is not opened.
+  assert.equal(run('guard-bash.mjs', bash('bq update --source acl.json p:ds'), root).status, 0);
+});
+
 test('guard-bash ignores other tools and malformed input', async () => {
   const root = await project();
   assert.equal(run('guard-bash.mjs', { tool_name: 'Read', tool_input: { file_path: 'x' } }, root).status, 0);

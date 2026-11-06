@@ -1,5 +1,10 @@
 {
   "name": "Roofr",
   "startUrl": "https://app.roofr.com/",
-  "host": "roofr.com"
+  "host": "roofr.com",
+  "snapshotConsent": {
+    "by": "account owner, relayed by the Secnd team",
+    "on": "2026-11-06",
+    "scope": "read"
+  }
 }

@@ -17,5 +17,10 @@
     "salesRep",
     "contacts",
     "billingInfo"
-  ]
+  ],
+  "snapshotConsent": {
+    "by": "account owner, relayed by the Secnd team",
+    "on": "2026-11-06",
+    "scope": "read"
+  }
 }

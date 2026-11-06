@@ -15,6 +15,17 @@
 //   /slow                 answers after slowMs
 //   /api/popup-data       JSON for the popup
 //   /api/big              a bigBodyBytes JSON body, larger than a write stream's buffer, so the trace writer drains
+//
+// Snapshot routes (per-server state; see snapshotRoute below):
+//   /api/paged            Laravel meta paginator, 57 items            /api/paged-notot   meta without last_page or total, 23 items
+//   /api/flat             Laravel flat paginator, 31 items            /api/cursor        3 pages, meta.next_cursor, 10 items
+//   /api/dt               DataTables, page=start,length, 135 rows     /api/things/<id>   detail for the ids of /api/paged
+//   /api/flaky            429 once (Retry-After 0), then 200          /api/err           500
+//   /api/xsrf             sets a readable XSRF-TOKEN cookie           /api/team          { team: { id } }
+//   /api/need-headers     403 unless x-xsrf-token matches the cookie and team-id is sent
+//   /api/probe            200 JSON                                    /api/range         echoes start and end
+//   /api/expire-arm?after=N, /api/expire-reset: after N more /api/* requests every /api/* answers 401 and /api/probe redirects to /login
+//   /login                an HTML sign-in page
 
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -108,6 +119,146 @@ const popupHtml = `<!doctype html>
 fetch('/api/popup-data').then((r) => r.json()).then(() => { document.title = 'popup-done'; });
 </script></body></html>`;
 
+// ---- snapshot routes: pagination shapes, per-id details, retry and header behaviour, and an armable session expiry.
+
+/** Per-server state, so tests are independent. */
+interface SnapshotState {
+  flakyServed: boolean;
+  expireIn: number | null;
+  expired: boolean;
+}
+
+export const pagedTotal = 57;
+export const pagedNototTotal = 23;
+export const flatTotal = 31;
+export const cursorTotal = 10;
+export const dtTotal = 135;
+
+const rowsOf = (from: number, to: number): { id: number; name: string }[] => {
+  const out: { id: number; name: string }[] = [];
+  for (let id = from; id <= to; id++) out.push({ id, name: `item ${id}` });
+  return out;
+};
+const pageOf = (url: URL, total: number): { page: number; per: number; data: { id: number; name: string }[] } => {
+  const page = Math.max(1, Number(url.searchParams.get('page') ?? 1));
+  const per = Math.max(1, Number(url.searchParams.get('per_page') ?? 15));
+  return { page, per, data: rowsOf((page - 1) * per + 1, Math.min(page * per, total)) };
+};
+const cursorPages: Record<string, { from: number; to: number; next: string | null }> = {
+  '': { from: 1, to: 4, next: 'c1' },
+  c1: { from: 5, to: 8, next: 'c2' },
+  c2: { from: 9, to: 10, next: null },
+};
+
+type Send = (status: number, type: string, body: string, headers?: Record<string, string>) => void;
+
+/** True when the request was answered here. */
+function snapshotRoute(st: SnapshotState, url: URL, requestHeaders: http.IncomingHttpHeaders, send: Send, res: http.ServerResponse): boolean {
+  const p = url.pathname;
+  const json = (value: unknown, headers: Record<string, string> = {}) => send(200, 'application/json', JSON.stringify(value), headers);
+  if (p === '/login') {
+    send(200, 'text/html; charset=utf-8', '<!doctype html><html><head><meta charset="utf-8"><title>login</title></head><body><h1>Sign in</h1></body></html>');
+    return true;
+  }
+  if (!p.startsWith('/api/')) return false;
+  if (p === '/api/expire-arm') {
+    st.expireIn = Number(url.searchParams.get('after') ?? 0);
+    st.expired = false;
+    json({ armed: st.expireIn });
+    return true;
+  }
+  if (p === '/api/expire-reset') {
+    st.expireIn = null;
+    st.expired = false;
+    json({ reset: true });
+    return true;
+  }
+  if (st.expireIn !== null || st.expired) {
+    if (!st.expired) {
+      if ((st.expireIn ?? 0) <= 0) st.expired = true;
+      else st.expireIn = (st.expireIn ?? 0) - 1;
+    }
+    if (st.expired) {
+      if (p === '/api/probe') {
+        res.writeHead(302, { location: '/login', 'cache-control': 'no-store' });
+        res.end();
+      } else {
+        send(401, 'application/json', JSON.stringify({ error: 'session expired' }));
+      }
+      return true;
+    }
+  }
+  const thing = /^\/api\/things\/(\d+)$/.exec(p);
+  if (thing) {
+    const id = Number(thing[1]);
+    if (id < 1 || id > pagedTotal) send(404, 'application/json', JSON.stringify({ error: 'no such thing' }));
+    else json({ id, name: `item ${id}`, detail: true });
+    return true;
+  }
+  switch (p) {
+    case '/api/paged': {
+      const { page, per, data } = pageOf(url, pagedTotal);
+      json({ data, meta: { current_page: page, last_page: Math.ceil(pagedTotal / per), per_page: per, total: pagedTotal } });
+      return true;
+    }
+    case '/api/paged-notot': {
+      const { page, per, data } = pageOf(url, pagedNototTotal);
+      json({ data, meta: { current_page: page, per_page: per } });
+      return true;
+    }
+    case '/api/flat': {
+      const { page, per, data } = pageOf(url, flatTotal);
+      json({ current_page: page, last_page: Math.ceil(flatTotal / per), per_page: per, total: flatTotal, data });
+      return true;
+    }
+    case '/api/cursor': {
+      const c = cursorPages[url.searchParams.get('cursor') ?? ''];
+      if (!c) send(400, 'application/json', JSON.stringify({ error: 'bad cursor' }));
+      else json({ data: rowsOf(c.from, c.to), meta: { next_cursor: c.next } });
+      return true;
+    }
+    case '/api/dt': {
+      const [startText, lengthText] = (url.searchParams.get('page') ?? '0,50').split(',');
+      const start = Number(startText);
+      const length = Number(lengthText);
+      json({ data: { aaData: rowsOf(start + 1, Math.min(start + length, dtTotal)), iTotalRecords: dtTotal, iTotalDisplayRecords: dtTotal } });
+      return true;
+    }
+    case '/api/flaky':
+      if (!st.flakyServed) {
+        st.flakyServed = true;
+        send(429, 'application/json', JSON.stringify({ error: 'slow down' }), { 'retry-after': '0' });
+      } else {
+        json({ ok: true });
+      }
+      return true;
+    case '/api/need-headers': {
+      const cookie = /(?:^|;\s*)XSRF-TOKEN=([^;]*)/.exec(requestHeaders.cookie ?? '');
+      const expected = cookie ? decodeURIComponent(cookie[1]!) : undefined;
+      if (expected !== undefined && requestHeaders['x-xsrf-token'] === expected && requestHeaders['team-id']) json({ data: [{ id: 1, team: requestHeaders['team-id'] }] });
+      else send(403, 'application/json', JSON.stringify({ error: 'missing headers' }));
+      return true;
+    }
+    case '/api/xsrf':
+      json({ ok: true }, { 'set-cookie': `XSRF-TOKEN=${encodeURIComponent('tok/+=abc')}; Path=/; SameSite=Lax` });
+      return true;
+    case '/api/team':
+      json({ team: { id: 'team_1' } });
+      return true;
+    case '/api/probe':
+      json({ ok: true });
+      return true;
+    case '/api/range':
+      json({ data: [{ start: url.searchParams.get('start'), end: url.searchParams.get('end') }] });
+      return true;
+    case '/api/err':
+      send(500, 'application/json', JSON.stringify({ error: 'boom' }));
+      return true;
+    default:
+      return false;
+  }
+}
+
 export interface FixtureSite {
   url: string;
   close(): Promise<void>;
@@ -115,6 +266,7 @@ export interface FixtureSite {
 
 export async function startFixtureSite(): Promise<FixtureSite> {
   let nextId = 1;
+  const snapshotState: SnapshotState = { flakyServed: false, expireIn: null, expired: false };
   const server = http.createServer((req, res) => {
     const url = new URL(req.url ?? '/', 'http://fixture.invalid');
     const send = (status: number, type: string, body: string, headers: Record<string, string> = {}) => {
@@ -128,6 +280,8 @@ export async function startFixtureSite(): Promise<FixtureSite> {
       req.on('data', (chunk: Buffer) => chunks.push(chunk));
       req.on('end', () => then(Buffer.concat(chunks)));
     };
+
+    if (req.method === 'GET' && snapshotRoute(snapshotState, url, req.headers, send, res)) return;
 
     const itemPage = /^\/items\/(\d{4})$/.exec(url.pathname);
     if (req.method === 'GET' && itemPage) return send(200, 'text/html; charset=utf-8', itemHtml(itemPage[1]!));

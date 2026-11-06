@@ -11,6 +11,10 @@ export const captureErrorCodes = [
   'workflow-invalid',      // a workflow spec failed its schema
   'browser-closed',        // the socket dropped mid-run
   'step-order',            // begin/end called out of protocol order (a caller bug)
+  'plan-invalid',          // a snapshot plan failed its schema or cross-checks
+  'consent-missing',       // snapshot on a production target without a valid snapshotConsent
+  'session-expired',       // a liveness probe says the signed-in session is gone
+  'snapshot-incomplete',   // the snapshot finished with failed or partial endpoints
 ] as const;
 export type CaptureErrorCode = (typeof captureErrorCodes)[number];
 
@@ -38,7 +42,12 @@ export function exitCodeFor(code: CaptureErrorCode): number {
     case 'trace-unreadable':
     case 'trace-version':
     case 'workflow-invalid':
+    case 'plan-invalid':
+    case 'consent-missing':
       return 3;
+    case 'session-expired':
+    case 'snapshot-incomplete':
+      return 4;
     case 'step-order':
       return 1;
   }
